@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { View, StyleSheet, Platform, DeviceEventEmitter } from 'react-native'
-import { Stack, useNavigationContainerRef, usePathname } from 'expo-router'
+import { View, StyleSheet, Platform, DeviceEventEmitter, Linking } from 'react-native'
+import { Stack, useNavigationContainerRef, usePathname, router } from 'expo-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '@/lib/queryClient'
 import * as Sentry from '@sentry/react-native'
@@ -41,6 +41,7 @@ import OfflineBanner from '@/components/OfflineBanner'
 import OfflineOverlay from '@/components/OfflineOverlay'
 import { Text } from '@/components/ui/Text'
 import { BG } from '@/lib/theme'
+import { triggerLocalNotification } from '@/lib/notifications'
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
 // React requires a class component to catch render errors — hooks cannot do this.
@@ -111,6 +112,61 @@ function ScreenTracker() {
     track('screen_viewed', { screen: pathname })
   }, [pathname])
   return null
+}
+
+import { useToast } from '@/contexts/ToastContext'
+
+function LumiBootstrap({ children }: { children: React.ReactNode }) {
+  const { showToast } = useToast()
+
+  useEffect(() => {
+    // 1. Listen to reactive notification alerts
+    const handleNewNotif = (event: any) => {
+      const notif = event.detail
+      if (notif) {
+        showToast(notif.title, 'success')
+      }
+    }
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('lumi_new_notification', handleNewNotif)
+    }
+
+    // 2. Deep-linking incoming link listener
+    const handleDeepLink = (event: { url: string }) => {
+      const url = event.url
+      if (!url) return
+      
+      console.log('[DeepLinking] Received URL:', url)
+      
+      if (url.includes('promo')) {
+        showToast('Premium Filter Unlocked! 🚀', 'success')
+        triggerLocalNotification('Promo Unlocked!', 'Welcome back to Lumi AI! Premium features have been unlocked via link.')
+      } else if (url.includes('tool=')) {
+        const match = url.match(/tool=([^&]+)/)
+        const tool = match ? match[1] : 'beauty'
+        showToast(`Launching ${tool.toUpperCase()} studio...`, 'info')
+        router.push({
+          pathname: '/editor',
+          params: { initialTool: tool }
+        })
+      }
+    }
+
+    const sub = Linking.addEventListener('url', handleDeepLink)
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url })
+    })
+
+    return () => {
+      sub.remove()
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('lumi_new_notification', handleNewNotif)
+      }
+    }
+  }, [showToast])
+
+  return <>{children}</>
 }
 
 // ─── Root layout ──────────────────────────────────────────────────────────────
@@ -217,6 +273,7 @@ function RootLayout() {
           <QueryClientProvider client={queryClient}>
           <SubscriptionProvider>
             <ToastProvider>
+            <LumiBootstrap>
             <SafeAreaProvider>
               <GestureHandlerRootView style={{ flex: 1, backgroundColor: BG }}>
                 <BottomSheetModalProvider>
@@ -268,6 +325,7 @@ function RootLayout() {
                 </BottomSheetModalProvider>
               </GestureHandlerRootView>
             </SafeAreaProvider>
+            </LumiBootstrap>
             </ToastProvider>
           </SubscriptionProvider>
           </QueryClientProvider>

@@ -39,7 +39,7 @@ import {
     AI_STORY_TEMPLATES,
     type AIStyleFilter
 } from '@/lib/mockData'
-import { removeBackgroundAPI, smartHealingAPI } from '@/lib/api'
+import { removeBackgroundAPI, smartHealingAPI, aiGenerateBackdropAPI } from '@/lib/api'
 
 const { width: SW, height: SH } = Dimensions.get('window')
 const VIEWPORT_H = SH * 0.46
@@ -116,6 +116,12 @@ export default function EditorScreen() {
     const [isRemovingBg, setIsRemovingBg] = useState(false)
     const [selectedBackdrop, setSelectedBackdrop] = useState<string>('none')
     const [bgBlur, setBgBlur] = useState(0) // background blur intensity (0 to 100)
+
+    // AI Backdrop Generator State
+    const [aiBackdropPrompt, setAiBackdropPrompt] = useState('')
+    const [isGeneratingBackdrop, setIsGeneratingBackdrop] = useState(false)
+    const [aiBackdropProgress, setAiBackdropProgress] = useState(0)
+    const [backdropStageIndex, setBackdropStageIndex] = useState(0)
 
     // 3. Video Trimming & FX
     const [trimStart, setTrimStart] = useState(0) // percentage
@@ -217,6 +223,47 @@ export default function EditorScreen() {
             }
         } else {
             setIsBgRemoved(false)
+        }
+    }
+
+    const BACKDROP_STEPS = [
+        'Analyzing prompt context...',
+        'Dreaming scenery landscapes...',
+        'Synthesizing high-res pixels...',
+        'Blending light & shadows...'
+    ]
+
+    const handleGenerateBackdrop = async () => {
+        if (!aiBackdropPrompt.trim() || isGeneratingBackdrop) return
+        setIsGeneratingBackdrop(true)
+        setAiBackdropProgress(0)
+        setBackdropStageIndex(0)
+
+        let progress = 0
+        const interval = setInterval(() => {
+            progress += 10
+            setAiBackdropProgress(progress)
+            
+            const step = Math.min(
+                Math.floor((progress / 100) * BACKDROP_STEPS.length),
+                BACKDROP_STEPS.length - 1
+            )
+            setBackdropStageIndex(step)
+
+            if (progress >= 100) {
+                clearInterval(interval)
+            }
+        }, 150)
+
+        try {
+            const generatedUrl = await aiGenerateBackdropAPI(aiBackdropPrompt)
+            setSelectedBackdrop(generatedUrl)
+            setIsBgRemoved(true)
+        } catch (err) {
+            console.error('[API] aiGenerateBackdropAPI error:', err)
+        } finally {
+            setIsGeneratingBackdrop(false)
+            setAiBackdropPrompt('')
         }
     }
 
@@ -341,7 +388,7 @@ export default function EditorScreen() {
                 {isBgRemoved && selectedBackdrop !== 'none' && (
                     <View style={StyleSheet.absoluteFill}>
                         <Image 
-                            source={{ uri: PRESET_BACKDROPS.find(b => b.id === selectedBackdrop)?.image }} 
+                            source={{ uri: selectedBackdrop.startsWith('http') ? selectedBackdrop : PRESET_BACKDROPS.find(b => b.id === selectedBackdrop)?.image }} 
                             style={s.viewportMedia as any} 
                             resizeMode="contain" 
                         />
@@ -441,6 +488,31 @@ export default function EditorScreen() {
                     </View>
                 )}
 
+                {/* AI Backdrop Generator Progress Overlay */}
+                {activeTab === 'background' && isGeneratingBackdrop && (
+                    <View style={[StyleSheet.absoluteFillObject, { zIndex: 30, overflow: 'hidden' }]}>
+                        <LinearGradient
+                            colors={['rgba(6,182,212,0.3)', 'transparent']}
+                            style={{
+                                position: 'absolute',
+                                left: 0,
+                                right: 0,
+                                top: `${aiBackdropProgress}%`,
+                                height: 80,
+                                borderBottomWidth: 2,
+                                borderBottomColor: '#06b6d4',
+                            }}
+                        />
+                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' }]}>
+                            <ActivityIndicator size="large" color="#06b6d4" />
+                            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', marginTop: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                                {BACKDROP_STEPS[backdropStageIndex]}
+                            </Text>
+                            <Text style={{ color: '#06b6d4', fontSize: 14, fontWeight: '800', marginTop: 4 }}>{aiBackdropProgress}%</Text>
+                        </View>
+                    </View>
+                )}
+
                 {/* 7. AI Story Templates Overlay */}
                 {activeTab === 'story' && (
                     <View style={[StyleSheet.absoluteFillObject, { zIndex: 20, pointerEvents: 'none' }]}>
@@ -530,19 +602,22 @@ export default function EditorScreen() {
                 )}
 
                 {/* Simulated interactive drag region for Before/After */}
-                {activeTab !== 'story' && (
-                    <View style={s.comparisonSliderWrap}>
-                        <Slider
-                            style={{ width: '100%', height: 40 }}
-                            minimumValue={0}
-                            maximumValue={1}
-                            value={compareSplit}
-                            onValueChange={setCompareSplit}
-                            minimumTrackTintColor="transparent"
-                            maximumTrackTintColor="transparent"
-                            thumbTintColor="transparent"
-                        />
-                    </View>
+                {activeTab !== 'story' && activeTab !== 'eraser' && (
+                    <Pressable
+                        onStartShouldSetResponder={() => true}
+                        onMoveShouldSetResponder={() => true}
+                        onResponderGrant={(evt) => {
+                            const { locationX } = evt.nativeEvent
+                            const percentage = Math.max(0, Math.min(1, locationX / SW))
+                            setCompareSplit(percentage)
+                        }}
+                        onResponderMove={(evt) => {
+                            const { locationX } = evt.nativeEvent
+                            const percentage = Math.max(0, Math.min(1, locationX / SW))
+                            setCompareSplit(percentage)
+                        }}
+                        style={[StyleSheet.absoluteFillObject, { zIndex: 12 }]}
+                    />
                 )}
                 
                 {/* Aspect Ratio Badge Overlay */}
@@ -664,6 +739,54 @@ export default function EditorScreen() {
                                 </ScrollView>
                             </View>
                         )}
+
+                        {/* Prompt-to-Backdrop scene generator */}
+                        <View style={{ gap: 10, marginTop: 6, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 14 }}>
+                            <Text style={s.subSectionTitle}>AI Backdrop Scene Generator</Text>
+                            <Text style={{ fontSize: 11, color: TEXT_SECONDARY }}>
+                                Describe the backdrop you want to create and Lumi AI will generate it:
+                            </Text>
+                            <TextInput
+                                style={{
+                                    backgroundColor: SURFACE,
+                                    borderWidth: 1,
+                                    borderColor: BORDER,
+                                    borderRadius: 10,
+                                    paddingHorizontal: 14,
+                                    paddingVertical: 10,
+                                    color: '#fff',
+                                    fontSize: 13,
+                                    marginTop: 2
+                                }}
+                                placeholder="e.g., retro futuristic vaporwave neon beach at sunset..."
+                                placeholderTextColor={TEXT_TERTIARY}
+                                value={aiBackdropPrompt}
+                                onChangeText={setAiBackdropPrompt}
+                                maxLength={80}
+                                editable={!isGeneratingBackdrop}
+                            />
+                            <Pressable
+                                onPress={handleGenerateBackdrop}
+                                disabled={!aiBackdropPrompt.trim() || isGeneratingBackdrop}
+                                style={({ pressed }) => [
+                                    {
+                                        backgroundColor: aiBackdropPrompt.trim() ? ACCENT : SURFACE2,
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        paddingVertical: 12,
+                                        borderRadius: 10,
+                                        gap: 8,
+                                        opacity: (!aiBackdropPrompt.trim() || isGeneratingBackdrop) ? 0.5 : (pressed ? 0.85 : 1)
+                                    }
+                                ]}
+                            >
+                                <Ionicons name="color-wand" size={16} color="#fff" />
+                                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
+                                    {isGeneratingBackdrop ? 'Generating Backdrop...' : 'Generate Backdrop'}
+                                </Text>
+                            </Pressable>
+                        </View>
                     </ScrollView>
                 )}
 
