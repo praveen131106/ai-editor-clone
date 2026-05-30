@@ -91,6 +91,20 @@ export type AudioTrack = {
     genre: string
 }
 
+export type AIAvatarStyle = {
+    id: string
+    name: string
+    thumbnail: string
+    sampleUrl: string
+}
+
+export type AIStoryTemplate = {
+    id: string
+    name: string
+    tagline: string
+    layout: 'magazine' | 'retro' | 'neon' | 'influencer'
+}
+
 // ─── Demo User ────────────────────────────────────────────────────────────────
 
 export const demoUser = {
@@ -240,6 +254,40 @@ export const AUDIO_TRACKS: AudioTrack[] = [
     { id: 'audio-2', title: 'Lofi Glow Dreams', artist: 'Acoustic Chill', duration: '0:30', genre: 'Lofi Beat' },
     { id: 'audio-3', title: 'Pop Glam Runway', artist: 'Stella Sound', duration: '0:20', genre: 'Electro Pop' },
     { id: 'audio-4', title: 'Epic Cinematic Rise', artist: 'Hype Orchestra', duration: '0:15', genre: 'Orchestral' }
+]
+
+export const AI_AVATAR_STYLES: AIAvatarStyle[] = [
+    {
+        id: 'avatar-cyber',
+        name: 'Cyberpunk 2099',
+        thumbnail: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=150&auto=format&fit=crop',
+        sampleUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop'
+    },
+    {
+        id: 'avatar-anime',
+        name: 'Anime Chibi',
+        thumbnail: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=150&auto=format&fit=crop',
+        sampleUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop'
+    },
+    {
+        id: 'avatar-corporate',
+        name: 'Corporate CEO',
+        thumbnail: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?q=80&w=150&auto=format&fit=crop',
+        sampleUrl: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?q=80&w=600&auto=format&fit=crop'
+    },
+    {
+        id: 'avatar-painting',
+        name: 'Oil Painting',
+        thumbnail: 'https://images.unsplash.com/photo-1554151228-14d9def656e4?q=80&w=150&auto=format&fit=crop',
+        sampleUrl: 'https://images.unsplash.com/photo-1554151228-14d9def656e4?q=80&w=600&auto=format&fit=crop'
+    }
+]
+
+export const AI_STORY_TEMPLATES: AIStoryTemplate[] = [
+    { id: 'story-magazine', name: 'Lumi Magazine', tagline: 'Vogue-style high-end editorial layout', layout: 'magazine' },
+    { id: 'story-retro', name: 'Retro Filmstrip', tagline: 'Classic 35mm warm analogue borders', layout: 'retro' },
+    { id: 'story-neon', name: 'Neon Splash', tagline: 'Electric glowing borders & outline highlights', layout: 'neon' },
+    { id: 'story-influencer', name: 'Viral Splash', tagline: 'Modern sleek card overlays and stats', layout: 'influencer' }
 ]
 
 // ─── Projects History Data (ItemSummary Compatibility) ─────────────────────────

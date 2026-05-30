@@ -25,15 +25,17 @@ import {
     TEXT_TERTIARY,
 } from '@/lib/theme'
 import { TAB_BAR_CLEARANCE } from '@/components/TabBar'
-import { itemSummaries as defaultProjects, type ItemSummary } from '@/lib/mockData'
+import { itemSummaries as defaultProjects, type ItemSummary, type NotificationItem, notificationItems as defaultNotifications } from '@/lib/mockData'
 
 type FilterMediaType = 'all' | 'image' | 'video'
 
 export default function ActivityScreen() {
     const insets = useSafeAreaInsets()
     const navigation = useNavigation()
+    const [viewMode, setViewMode] = useState<'creations' | 'notifications'>('creations')
     const [activeTab, setActiveTab] = useState<FilterMediaType>('all')
     const [creations, setCreations] = useState<ItemSummary[]>([])
+    const [notifications, setNotifications] = useState<NotificationItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
 
     // Load creations history from AsyncStorage
@@ -54,13 +56,44 @@ export default function ActivityScreen() {
         }
     }
 
+    // Load notifications from AsyncStorage
+    const loadNotifications = async () => {
+        try {
+            const stored = await AsyncStorage.getItem('lumi_notifications')
+            if (stored) {
+                setNotifications(JSON.parse(stored))
+            } else {
+                await AsyncStorage.setItem('lumi_notifications', JSON.stringify(defaultNotifications))
+                setNotifications(defaultNotifications)
+            }
+        } catch (e) {
+            setNotifications(defaultNotifications)
+        }
+    }
+
     useEffect(() => {
         loadCreations()
+        loadNotifications()
         const unsubscribe = navigation.addListener('focus', () => {
             loadCreations()
+            loadNotifications()
         })
         return unsubscribe
     }, [navigation])
+
+    useEffect(() => {
+        const handleNewNotif = () => {
+            loadNotifications()
+        }
+        if (typeof window !== 'undefined') {
+            window.addEventListener('lumi_new_notification', handleNewNotif)
+        }
+        return () => {
+            if (typeof window !== 'undefined') {
+                window.removeEventListener('lumi_new_notification', handleNewNotif)
+            }
+        }
+    }, [])
 
     const filteredCreations = useMemo(() => {
         if (activeTab === 'all') return creations
@@ -108,76 +141,134 @@ export default function ActivityScreen() {
             {/* Header */}
             <View style={s.header}>
                 <View>
-                    <Text style={s.title}>Creations</Text>
-                    <Text style={s.subtitle}>Your saved project drafts and history.</Text>
+                    <Text style={s.title}>Creative Activity</Text>
+                    <Text style={s.subtitle}>Your creations history and local notifications feed.</Text>
                 </View>
             </View>
 
-            {/* Media type segment row */}
+            {/* Creations vs Notifications Mode Tab Switcher */}
             <View style={s.segmentRow}>
                 <Pressable
-                    onPress={() => setActiveTab('all')}
-                    style={[s.segmentItem, activeTab === 'all' && s.segmentItemActive]}
+                    onPress={() => setViewMode('creations')}
+                    style={[s.segmentItem, viewMode === 'creations' && s.segmentItemActive]}
                 >
-                    <Text style={[s.segmentText, activeTab === 'all' && s.segmentTextActive]}>All ({creations.length})</Text>
+                    <Text style={[s.segmentText, viewMode === 'creations' && s.segmentTextActive]}>Creations ({creations.length})</Text>
                 </Pressable>
                 <Pressable
-                    onPress={() => setActiveTab('image')}
-                    style={[s.segmentItem, activeTab === 'image' && s.segmentItemActive]}
+                    onPress={() => setViewMode('notifications')}
+                    style={[s.segmentItem, viewMode === 'notifications' && s.segmentItemActive]}
                 >
-                    <Text style={[s.segmentText, activeTab === 'image' && s.segmentTextActive]}>Photos ({creations.filter(c => c.mediaType === 'image').length})</Text>
-                </Pressable>
-                <Pressable
-                    onPress={() => setActiveTab('video')}
-                    style={[s.segmentItem, activeTab === 'video' && s.segmentItemActive]}
-                >
-                    <Text style={[s.segmentText, activeTab === 'video' && s.segmentTextActive]}>Videos ({creations.filter(c => c.mediaType === 'video').length})</Text>
+                    <Text style={[s.segmentText, viewMode === 'notifications' && s.segmentTextActive]}>Notifications ({notifications.filter(n => !n.read).length} Unread)</Text>
                 </Pressable>
             </View>
 
-            {/* List area */}
-            {isLoading ? (
-                <View style={s.center}>
-                    <ActivityIndicator color={ACCENT} />
-                </View>
-            ) : filteredCreations.length === 0 ? (
-                <Card style={s.emptyCard}>
-                    <Ionicons name="folder-open-outline" size={36} color={TEXT_TERTIARY} />
-                    <Text style={s.emptyTitle}>Empty gallery</Text>
-                    <Text style={s.emptySub}>No saved projects matching this filter.</Text>
-                </Card>
-            ) : (
-                <View style={s.listWrap}>
-                    {filteredCreations.map((item) => (
+            {viewMode === 'creations' ? (
+                <>
+                    {/* Media type segment row */}
+                    <View style={[s.segmentRow, { marginTop: 0 }]}>
                         <Pressable
-                            key={item.id}
-                            onPress={() => resumeEdit(item)}
-                            style={({ pressed }) => [s.row, pressed && { opacity: 0.85 }]}
+                            onPress={() => setActiveTab('all')}
+                            style={[s.segmentItem, activeTab === 'all' && s.segmentItemActive]}
                         >
-                            <Image source={{ uri: item.thumbnail }} style={s.thumbnail} />
-                            
-                            {item.mediaType === 'video' && (
-                                <View style={s.playBadge}>
-                                    <Ionicons name="play" size={10} color="#fff" />
-                                </View>
-                            )}
-
-                            <View style={s.rowBody}>
-                                <Text style={s.rowTitle}>{item.name}</Text>
-                                <Text style={s.rowSummary} numberOfLines={1}>{item.summary}</Text>
-                                <Text style={s.rowTime}>{item.updatedAt} · {item.mediaType === 'image' ? 'Photo' : 'Video'}</Text>
-                            </View>
-
-                            <Pressable
-                                onPress={() => deleteCreation(item.id)}
-                                hitSlop={12}
-                                style={({ pressed }) => [s.deleteBtn, pressed && { opacity: 0.7 }]}
-                            >
-                                <Ionicons name="trash-outline" size={18} color={TEXT_TERTIARY} />
-                            </Pressable>
+                            <Text style={[s.segmentText, activeTab === 'all' && s.segmentTextActive]}>All ({creations.length})</Text>
                         </Pressable>
-                    ))}
-                </View>
+                        <Pressable
+                            onPress={() => setActiveTab('image')}
+                            style={[s.segmentItem, activeTab === 'image' && s.segmentItemActive]}
+                        >
+                            <Text style={[s.segmentText, activeTab === 'image' && s.segmentTextActive]}>Photos ({creations.filter(c => c.mediaType === 'image').length})</Text>
+                        </Pressable>
+                        <Pressable
+                            onPress={() => setActiveTab('video')}
+                            style={[s.segmentItem, activeTab === 'video' && s.segmentItemActive]}
+                        >
+                            <Text style={[s.segmentText, activeTab === 'video' && s.segmentTextActive]}>Videos ({creations.filter(c => c.mediaType === 'video').length})</Text>
+                        </Pressable>
+                    </View>
+
+                    {/* Creations List area */}
+                    {isLoading ? (
+                        <View style={s.center}>
+                            <ActivityIndicator color={ACCENT} />
+                        </View>
+                    ) : filteredCreations.length === 0 ? (
+                        <Card style={s.emptyCard}>
+                            <Ionicons name="folder-open-outline" size={36} color={TEXT_TERTIARY} />
+                            <Text style={s.emptyTitle}>Empty gallery</Text>
+                            <Text style={s.emptySub}>No saved projects matching this filter.</Text>
+                        </Card>
+                    ) : (
+                        <View style={s.listWrap}>
+                            {filteredCreations.map((item) => (
+                                <Pressable
+                                    key={item.id}
+                                    onPress={() => resumeEdit(item)}
+                                    style={({ pressed }) => [s.row, pressed && { opacity: 0.85 }]}
+                                >
+                                    <Image source={{ uri: item.thumbnail }} style={s.thumbnail} />
+                                    
+                                    {item.mediaType === 'video' && (
+                                        <View style={s.playBadge}>
+                                            <Ionicons name="play" size={10} color="#fff" />
+                                        </View>
+                                    )}
+
+                                    <View style={s.rowBody}>
+                                        <Text style={s.rowTitle}>{item.name}</Text>
+                                        <Text style={s.rowSummary} numberOfLines={1}>{item.summary}</Text>
+                                        <Text style={s.rowTime}>{item.updatedAt} · {item.mediaType === 'image' ? 'Photo' : 'Video'}</Text>
+                                    </View>
+
+                                    <Pressable
+                                        onPress={() => deleteCreation(item.id)}
+                                        hitSlop={12}
+                                        style={({ pressed }) => [s.deleteBtn, pressed && { opacity: 0.7 }]}
+                                    >
+                                        <Ionicons name="trash-outline" size={18} color={TEXT_TERTIARY} />
+                                    </Pressable>
+                                </Pressable>
+                            ))}
+                        </View>
+                    )}
+                </>
+            ) : (
+                <>
+                    {/* Notifications List area */}
+                    {notifications.length === 0 ? (
+                        <Card style={s.emptyCard}>
+                            <Ionicons name="notifications-off-outline" size={36} color={TEXT_TERTIARY} />
+                            <Text style={s.emptyTitle}>No Alerts</Text>
+                            <Text style={s.emptySub}>You have no notification alerts yet.</Text>
+                        </Card>
+                    ) : (
+                        <View style={s.listWrap}>
+                            {notifications.map((notif) => (
+                                <View key={notif.id} style={[s.row, !notif.read && { borderColor: `${ACCENT}55`, borderWidth: 1 }]}>
+                                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(217,70,239,0.08)', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name="notifications-outline" size={16} color={ACCENT} />
+                                    </View>
+                                    <View style={s.rowBody}>
+                                        <Text style={[s.rowTitle, !notif.read && { fontWeight: '800' }]}>{notif.title}</Text>
+                                        <Text style={s.rowSummary} numberOfLines={2}>{notif.body}</Text>
+                                        <Text style={s.rowTime}>{notif.timeAgo}</Text>
+                                    </View>
+                                    {!notif.read && (
+                                        <Pressable
+                                            onPress={async () => {
+                                                const updated = notifications.map(n => n.id === notif.id ? { ...n, read: true } : n)
+                                                setNotifications(updated)
+                                                await AsyncStorage.setItem('lumi_notifications', JSON.stringify(updated))
+                                            }}
+                                            style={{ backgroundColor: `${ACCENT}15`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
+                                        >
+                                            <Text style={{ fontSize: 9.5, color: ACCENT, fontWeight: '700' }}>Mark Read</Text>
+                                        </Pressable>
+                                    )}
+                                </View>
+                            ))}
+                        </View>
+                    )}
+                </>
             )}
         </ScrollView>
     )

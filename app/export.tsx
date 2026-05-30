@@ -30,6 +30,8 @@ import {
 } from '@/lib/theme'
 import { itemSummaries as defaultProjects, type ItemSummary } from '@/lib/mockData'
 
+import { triggerLocalNotification } from '@/lib/notifications'
+
 const { width: SW } = Dimensions.get('window')
 
 type AspectRatio = '9:16' | '1:1' | '4:5' | '16:9'
@@ -128,6 +130,12 @@ export default function ExportScreen() {
             // Append to list and save
             const updated = [newItem, ...projects]
             await AsyncStorage.setItem('lumi_projects', JSON.stringify(updated))
+            
+            // Trigger local push notification alert
+            await triggerLocalNotification(
+                'Lumi AI Creation Saved!',
+                `Your beautiful studio export is successfully saved in Creations.`
+            )
             
             setIsRendering(false)
             setIsSuccess(true)

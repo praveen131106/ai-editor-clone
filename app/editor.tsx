@@ -6,7 +6,8 @@ import {
     Image,
     ScrollView,
     Dimensions,
-    ActivityIndicator
+    ActivityIndicator,
+    TextInput
 } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -34,13 +35,16 @@ import {
     AUDIO_TRACKS,
     STOCK_PORTRAITS,
     STOCK_VIDEOS,
+    AI_AVATAR_STYLES,
+    AI_STORY_TEMPLATES,
     type AIStyleFilter
 } from '@/lib/mockData'
+import { removeBackgroundAPI, smartHealingAPI } from '@/lib/api'
 
 const { width: SW, height: SH } = Dimensions.get('window')
 const VIEWPORT_H = SH * 0.46
 
-type ActiveTab = 'retouch' | 'background' | 'video' | 'filters' | 'audio'
+type ActiveTab = 'retouch' | 'background' | 'video' | 'filters' | 'audio' | 'eraser' | 'avatar' | 'story'
 
 export default function EditorScreen() {
     const insets = useSafeAreaInsets()
@@ -57,7 +61,15 @@ export default function EditorScreen() {
     const mediaType = params.mediaType || 'image'
     const mediaUrl = params.mediaUrl || STOCK_PORTRAITS[0].url
     const initialFilterId = params.filterId || ''
-    const initialTool = (params.initialTool as ActiveTab) || 'retouch'
+    
+    // Map entry point parameters safely to ActiveTab keys
+    const initialTool = useMemo<ActiveTab>(() => {
+        const raw = params.initialTool || 'retouch'
+        if (raw === 'beauty') return 'retouch'
+        if (raw === 'bg_swap') return 'background'
+        if (raw === 'trimmer') return 'video'
+        return (raw as ActiveTab)
+    }, [params.initialTool])
 
     // Editor State
     const [activeTab, setActiveTab] = useState<ActiveTab>(initialTool)
@@ -66,6 +78,31 @@ export default function EditorScreen() {
     // Before/After comparison slider (0 to 1)
     const [compareSplit, setCompareSplit] = useState(0.5)
     const [showCompare, setShowCompare] = useState(true)
+
+    // A. Object Eraser Parameters
+    const [eraserBrushSize, setEraserBrushSize] = useState(30)
+    const [eraserPoints, setEraserPoints] = useState<{ x: number; y: number }[]>([])
+    const [isErasingSimulated, setIsErasingSimulated] = useState(false)
+    const [healingProgress, setHealingProgress] = useState(0)
+    const [isObjectErased, setIsObjectErased] = useState(false)
+
+    // B. AI Avatar Parameters
+    const [selectedAvatarStyle, setSelectedAvatarStyle] = useState('avatar-cyber')
+    const [selectedHairstyle, setSelectedHairstyle] = useState('Slicked Back')
+    const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false)
+    const [avatarProgress, setAvatarProgress] = useState(0)
+    const [avatarImageUrl, setAvatarImageUrl] = useState<string | null>(null)
+
+    // C. AI Story Parameters
+    const [selectedStoryLayout, setSelectedStoryLayout] = useState<'magazine' | 'retro' | 'neon' | 'influencer'>('magazine')
+    const [storyTitleText, setStoryTitleText] = useState('LUMI CREATIVE')
+    const [storyTextSize, setStoryTextSize] = useState(32)
+    const [storyTextColor, setStoryTextColor] = useState('#ffffff')
+
+    const currentMediaUrl = useMemo(() => {
+        if (activeTab === 'avatar' && avatarImageUrl) return avatarImageUrl
+        return mediaUrl
+    }, [activeTab, avatarImageUrl, mediaUrl])
 
     // 1. AI Beauty Parameters
     const [smoothing, setSmoothing] = useState(60)
@@ -76,6 +113,7 @@ export default function EditorScreen() {
 
     // 2. Background Removal & Replacement
     const [isBgRemoved, setIsBgRemoved] = useState(false)
+    const [isRemovingBg, setIsRemovingBg] = useState(false)
     const [selectedBackdrop, setSelectedBackdrop] = useState<string>('none')
     const [bgBlur, setBgBlur] = useState(0) // background blur intensity (0 to 100)
 
@@ -138,18 +176,91 @@ export default function EditorScreen() {
         // e.g. Audio.Sound.createAsync(...)
     }
 
+    // Smart Healing Object Eraser Simulation
+    // Smart Healing Object Eraser Simulation
+    const handleSmartErase = async () => {
+        if (eraserPoints.length === 0) return
+        setIsErasingSimulated(true)
+        setHealingProgress(0)
+        
+        let progress = 0
+        const interval = setInterval(() => {
+            progress += 10
+            setHealingProgress(progress)
+            if (progress >= 100) {
+                clearInterval(interval)
+            }
+        }, 150)
+
+        try {
+            await smartHealingAPI(mediaUrl, eraserPoints)
+            setIsObjectErased(true)
+        } catch (err) {
+            console.error('[API] smartHealingAPI error:', err)
+        } finally {
+            setIsErasingSimulated(false)
+            setEraserPoints([])
+        }
+    }
+
+    // Background Removal API Trigger
+    const handleToggleBackgroundRemoval = async () => {
+        if (!isBgRemoved) {
+            setIsRemovingBg(true)
+            try {
+                await removeBackgroundAPI(mediaUrl)
+                setIsBgRemoved(true)
+            } catch (err) {
+                console.error('[API] removeBackgroundAPI error:', err)
+            } finally {
+                setIsRemovingBg(false)
+            }
+        } else {
+            setIsBgRemoved(false)
+        }
+    }
+
+    // AI Avatar Stylization Simulation
+    const handleGenerateAvatar = () => {
+        setIsGeneratingAvatar(true)
+        setAvatarProgress(0)
+        
+        let progress = 0
+        const interval = setInterval(() => {
+            progress += 5
+            setAvatarProgress(progress)
+            if (progress >= 100) {
+                clearInterval(interval)
+                setIsGeneratingAvatar(false)
+                
+                // Map style selection to mock stylizations
+                const styleObj = AI_AVATAR_STYLES.find(s => s.id === selectedAvatarStyle)
+                if (styleObj) {
+                    setAvatarImageUrl(styleObj.sampleUrl)
+                }
+            }
+        }, 100)
+    }
+
     // Direct routing to export flow
     const navigateToExport = () => {
         // Collect current edits summary
-        const editsSummary = isBgRemoved 
-            ? 'Removed backdrop, swapped background' 
-            : `Smooth: ${smoothing}%, Glow: ${glow}%, Tint: ${lipColor}, FX: ${selectedFx}`
+        let editsSummary = `Smooth: ${smoothing}%, Glow: ${glow}%, Tint: ${lipColor}, FX: ${selectedFx}`
+        if (isBgRemoved) {
+            editsSummary = 'Removed backdrop, swapped background'
+        } else if (activeTab === 'eraser' && isObjectErased) {
+            editsSummary = 'Erased object from image using AI Smart Healing'
+        } else if (activeTab === 'avatar' && avatarImageUrl) {
+            editsSummary = `Generated AI Avatar in ${selectedAvatarStyle} style`
+        } else if (activeTab === 'story') {
+            editsSummary = `Created AI Story with template ${selectedStoryLayout} layout`
+        }
 
         router.push({
             pathname: '/export',
             params: {
                 mediaType,
-                mediaUrl,
+                mediaUrl: (activeTab === 'avatar' && avatarImageUrl) ? avatarImageUrl : mediaUrl,
                 editsSummary,
                 smoothing,
                 glow,
@@ -161,6 +272,25 @@ export default function EditorScreen() {
             }
         })
     }
+
+    const bottomNavItems = useMemo(() => {
+        if (mediaType === 'video') {
+            return [
+                { key: 'video', label: 'Trim & FX', icon: 'videocam' },
+                { key: 'audio', label: 'Music', icon: 'musical-notes' },
+                { key: 'filters', label: 'AI Presets', icon: 'color-palette' }
+            ]
+        } else {
+            return [
+                { key: 'retouch', label: 'Retouch', icon: 'sparkles' },
+                { key: 'background', label: 'Backdrop', icon: 'image' },
+                { key: 'eraser', label: 'Eraser', icon: 'color-wand' },
+                { key: 'avatar', label: 'AI Avatar', icon: 'person-circle' },
+                { key: 'story', label: 'AI Story', icon: 'images' },
+                { key: 'filters', label: 'AI Presets', icon: 'color-palette' }
+            ]
+        }
+    }, [mediaType])
 
     return (
         <View style={{ flex: 1, backgroundColor: BG }}>
@@ -183,10 +313,23 @@ export default function EditorScreen() {
             </View>
 
             {/* Main Creative Viewport */}
-            <View style={s.viewportContainer}>
+            <View 
+                style={s.viewportContainer}
+                onStartShouldSetResponder={() => activeTab === 'eraser'}
+                onResponderGrant={(evt) => {
+                    if (activeTab !== 'eraser' || isErasingSimulated) return
+                    const { locationX, locationY } = evt.nativeEvent
+                    setEraserPoints([{ x: locationX, y: locationY }])
+                }}
+                onResponderMove={(evt) => {
+                    if (activeTab !== 'eraser' || isErasingSimulated) return
+                    const { locationX, locationY } = evt.nativeEvent
+                    setEraserPoints((prev) => [...prev, { x: locationX, y: locationY }])
+                }}
+            >
                 {/* 1. Base Layer (Original Image / Video representation) */}
                 <View style={StyleSheet.absoluteFill}>
-                    <Image source={{ uri: mediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                    <Image source={{ uri: currentMediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
                     {mediaType === 'video' && (
                         <View style={s.playOverlay}>
                             <Ionicons name={isVideoPlaying ? 'pause' : 'play'} size={24} color="#fff" />
@@ -213,13 +356,13 @@ export default function EditorScreen() {
                             {stockModel ? (
                                 // Flawless transparent stock mask overlay
                                 <Image 
-                                    source={{ uri: mediaUrl }} 
+                                    source={{ uri: currentMediaUrl }} 
                                     style={[s.viewportMedia as any, { tintColor: selectedFx === 'neon' ? ACCENT : undefined }]} 
                                     resizeMode="contain" 
-                                />
+                                  />
                             ) : (
                                 // Smart edge mask fallback
-                                <Image source={{ uri: mediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                                <Image source={{ uri: currentMediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
                             )}
                         </View>
                     ) : (
@@ -246,8 +389,139 @@ export default function EditorScreen() {
                     )}
                 </View>
 
-                {/* 4. Glowing Before/After Split Line Controller */}
-                {showCompare && (
+                {/* 4. Interactive Object Eraser Mask Overlay */}
+                {activeTab === 'eraser' && eraserPoints.map((pt, idx) => (
+                    <View
+                        key={idx}
+                        style={{
+                            position: 'absolute',
+                            left: pt.x - eraserBrushSize / 2,
+                            top: pt.y - eraserBrushSize / 2,
+                            width: eraserBrushSize,
+                            height: eraserBrushSize,
+                            borderRadius: eraserBrushSize / 2,
+                            backgroundColor: 'rgba(239, 68, 68, 0.45)', // Red brush trail
+                            pointerEvents: 'none',
+                            zIndex: 25
+                        }}
+                    />
+                ))}
+
+                {/* 5. Object Eraser Smart Healing Progress Overlay */}
+                {activeTab === 'eraser' && isErasingSimulated && (
+                    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', zIndex: 30 }]}>
+                        <ActivityIndicator size="large" color={ACCENT} />
+                        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800', marginTop: 12 }}>AI Smart Healing...</Text>
+                        <Text style={{ color: ACCENT, fontSize: 12, fontWeight: '700', marginTop: 4 }}>{healingProgress}%</Text>
+                    </View>
+                )}
+
+                {/* 6. AI Avatar Face Scanner Mesh Overlay */}
+                {activeTab === 'avatar' && isGeneratingAvatar && (
+                    <View style={[StyleSheet.absoluteFillObject, { zIndex: 30, overflow: 'hidden' }]}>
+                        <LinearGradient
+                            colors={['rgba(217,70,239,0.3)', 'transparent']}
+                            style={{
+                                position: 'absolute',
+                                left: 0,
+                                right: 0,
+                                top: `${avatarProgress}%`,
+                                height: 80,
+                                borderBottomWidth: 2,
+                                borderBottomColor: ACCENT,
+                            }}
+                        />
+                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }]}>
+                            <ActivityIndicator size="large" color={ACCENT} />
+                            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', marginTop: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                                {avatarProgress < 30 ? 'Scanning Facial Mesh...' : avatarProgress < 65 ? 'Stylizing Textures...' : 'Rendering 3D Portrait...'}
+                            </Text>
+                            <Text style={{ color: ACCENT, fontSize: 14, fontWeight: '800', marginTop: 4 }}>{avatarProgress}%</Text>
+                        </View>
+                    </View>
+                )}
+
+                {/* 7. AI Story Templates Overlay */}
+                {activeTab === 'story' && (
+                    <View style={[StyleSheet.absoluteFillObject, { zIndex: 20, pointerEvents: 'none' }]}>
+                        {/* Magazine Cover template */}
+                        {selectedStoryLayout === 'magazine' && (
+                            <View style={[StyleSheet.absoluteFillObject, { padding: 24, justifyContent: 'space-between', borderWidth: 12, borderColor: '#fff' }]}>
+                                {/* Top magazine title */}
+                                <View style={{ alignItems: 'center', marginTop: 8 }}>
+                                    <Text style={{ color: '#fff', fontSize: 44, fontWeight: '900', letterSpacing: 4 }}>LUMI</Text>
+                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 3, marginTop: -4 }}>CREATIVE STUDIO</Text>
+                                </View>
+                                {/* Bottom subtitle & barcode */}
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                                    <View style={{ flex: 1, gap: 2 }}>
+                                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900', textTransform: 'uppercase' }}>{storyTitleText || 'LUMI CREATIVE'}</Text>
+                                        <Text style={{ color: '#fff', fontSize: 8, fontWeight: '600', opacity: 0.8 }}>EXCLUSIVE CREATION ISSUE · 2026</Text>
+                                    </View>
+                                    {/* Simulated Barcode */}
+                                    <View style={{ backgroundColor: '#fff', padding: 4, borderRadius: 2, flexDirection: 'row', gap: 1.5, height: 28, alignItems: 'center' }}>
+                                        {[1.5, 3, 1, 2, 4, 1.5, 2, 3, 1].map((w, i) => (
+                                            <View key={i} style={{ width: w, height: 20, backgroundColor: '#000' }} />
+                                        ))}
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Retro Filmstrip template */}
+                        {selectedStoryLayout === 'retro' && (
+                            <View style={[StyleSheet.absoluteFillObject, { justifyContent: 'space-between' }]}>
+                                {/* Top Film Bar */}
+                                <View style={{ height: 32, backgroundColor: '#0c0c0c', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 }}>
+                                    <Text style={{ color: '#f59e0b', fontSize: 9, fontWeight: '800' }}>KODAK PORTRA 400</Text>
+                                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                                        {[1, 2, 3, 4, 5].map(i => (
+                                            <View key={i} style={{ width: 8, height: 8, borderRadius: 1.5, borderWidth: 1.5, borderColor: '#333', backgroundColor: '#111' }} />
+                                        ))}
+                                    </View>
+                                </View>
+                                {/* Center warm tone vignette filter */}
+                                <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(245,158,11,0.06)', pointerEvents: 'none' }]} />
+                                {/* Bottom Film Bar */}
+                                <View style={{ height: 32, backgroundColor: '#0c0c0c', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 }}>
+                                    <Text style={{ color: '#f59e0b', fontSize: 9, fontWeight: '800' }}>{storyTitleText || 'RETRO ANALOGUE'}</Text>
+                                    <Text style={{ color: '#f59e0b', fontSize: 8, fontWeight: '800' }}>24A · SAFETY FILM</Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Neon Splash template */}
+                        {selectedStoryLayout === 'neon' && (
+                            <View style={[StyleSheet.absoluteFillObject, { borderWidth: 3, borderColor: ACCENT, padding: 20, justifyContent: 'center', alignItems: 'center' }]}>
+                                {/* Outer fuchsia neon border shadow */}
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 1.5, borderColor: '#06b6d4', margin: 4 }]} />
+                                <Text style={{ color: '#fff', fontSize: storyTextSize, fontWeight: '900', textAlign: 'center', textTransform: 'uppercase', textShadowColor: ACCENT, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 12 }}>
+                                    {storyTitleText || 'NEON DREAM'}
+                                </Text>
+                            </View>
+                        )}
+
+                        {/* Viral Splash / Influencer template */}
+                        {selectedStoryLayout === 'influencer' && (
+                            <View style={[StyleSheet.absoluteFillObject, { padding: 20, justifyContent: 'flex-end' }]}>
+                                <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 12, gap: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: ACCENT }} />
+                                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900', textTransform: 'uppercase' }}>VIRAL CREATOR</Text>
+                                    </View>
+                                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>{storyTitleText || 'Lumi AI Story Headline'}</Text>
+                                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 2, opacity: 0.8 }}>
+                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }}><Ionicons name="heart" size={10} color={ACCENT} /> 1.2M Likes</Text>
+                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }}><Ionicons name="chatbubble" size={10} color="#06b6d4" /> 4.2k Shares</Text>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {/* 8. Glowing Before/After Split Line Controller */}
+                {showCompare && activeTab !== 'story' && (
                     <View style={[s.compareSplitLine, { left: SW * compareSplit }]}>
                         <View style={s.compareSplitHandle}>
                             <Ionicons name="swap-horizontal" size={16} color="#fff" />
@@ -256,18 +530,20 @@ export default function EditorScreen() {
                 )}
 
                 {/* Simulated interactive drag region for Before/After */}
-                <View style={s.comparisonSliderWrap}>
-                    <Slider
-                        style={{ width: '100%', height: 40 }}
-                        minimumValue={0}
-                        maximumValue={1}
-                        value={compareSplit}
-                        onValueChange={setCompareSplit}
-                        minimumTrackTintColor="transparent"
-                        maximumTrackTintColor="transparent"
-                        thumbTintColor="transparent"
-                    />
-                </View>
+                {activeTab !== 'story' && (
+                    <View style={s.comparisonSliderWrap}>
+                        <Slider
+                            style={{ width: '100%', height: 40 }}
+                            minimumValue={0}
+                            maximumValue={1}
+                            value={compareSplit}
+                            onValueChange={setCompareSplit}
+                            minimumTrackTintColor="transparent"
+                            maximumTrackTintColor="transparent"
+                            thumbTintColor="transparent"
+                        />
+                    </View>
+                )}
                 
                 {/* Aspect Ratio Badge Overlay */}
                 <View style={s.aspectBadge}>
@@ -350,10 +626,15 @@ export default function EditorScreen() {
                         <View style={s.toggleRow}>
                             <Text style={s.sliderTitle}>One-Tap Remove Background</Text>
                             <Pressable
-                                onPress={() => setIsBgRemoved(!isBgRemoved)}
-                                style={[s.toggleSwitch, isBgRemoved && s.toggleSwitchActive]}
+                                onPress={handleToggleBackgroundRemoval}
+                                disabled={isRemovingBg}
+                                style={[s.toggleSwitch, isBgRemoved && s.toggleSwitchActive, isRemovingBg && { opacity: 0.7 }]}
                             >
-                                <View style={[s.toggleHandle, isBgRemoved && s.toggleHandleActive]} />
+                                {isRemovingBg ? (
+                                    <ActivityIndicator size="small" color="#fff" style={{ alignSelf: 'center' }} />
+                                ) : (
+                                    <View style={[s.toggleHandle, isBgRemoved && s.toggleHandleActive]} />
+                                )}
                             </Pressable>
                         </View>
 
@@ -491,32 +772,233 @@ export default function EditorScreen() {
                         </View>
                     </ScrollView>
                 )}
+
+                {/* 6. Object Eraser Controls */}
+                {activeTab === 'eraser' && (
+                    <ScrollView contentContainerStyle={s.scrollControls} showsVerticalScrollIndicator={false}>
+                        <View style={s.sliderRow}>
+                            <View style={s.sliderLabelRow}>
+                                <Text style={s.sliderTitle}>Brush Size</Text>
+                                <Text style={s.sliderVal}>{eraserBrushSize}px</Text>
+                            </View>
+                            <Slider
+                                style={{ width: '100%', height: 36 }}
+                                minimumValue={10}
+                                maximumValue={80}
+                                step={2}
+                                value={eraserBrushSize}
+                                onValueChange={setEraserBrushSize}
+                                minimumTrackTintColor={ACCENT}
+                                maximumTrackTintColor={BORDER}
+                            />
+                        </View>
+
+                        <Text style={s.subSectionTitle}>Eraser Actions</Text>
+                        <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                            <Pressable
+                                onPress={handleSmartErase}
+                                disabled={eraserPoints.length === 0 || isErasingSimulated}
+                                style={({ pressed }) => [
+                                    {
+                                        flex: 1.5,
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        backgroundColor: eraserPoints.length === 0 ? SURFACE2 : ACCENT,
+                                        paddingVertical: 12,
+                                        borderRadius: 10,
+                                        gap: 8,
+                                        opacity: (eraserPoints.length === 0 || isErasingSimulated) ? 0.5 : (pressed ? 0.85 : 1)
+                                    }
+                                ]}
+                            >
+                                <Ionicons name="sparkles" size={16} color="#fff" />
+                                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Smart Erase</Text>
+                            </Pressable>
+
+                            <Pressable
+                                onPress={() => {
+                                    setEraserPoints([])
+                                    setIsObjectErased(false)
+                                }}
+                                style={({ pressed }) => [
+                                    {
+                                        flex: 1,
+                                        backgroundColor: SURFACE,
+                                        borderWidth: 1,
+                                        borderColor: BORDER,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        paddingVertical: 12,
+                                        borderRadius: 10,
+                                        opacity: pressed ? 0.85 : 1
+                                    }
+                                ]}
+                            >
+                                <Text style={{ color: TEXT_SECONDARY, fontSize: 13, fontWeight: '700' }}>Reset</Text>
+                            </Pressable>
+                        </View>
+                        <Text style={{ fontSize: 10.5, color: TEXT_TERTIARY, textAlign: 'center', marginTop: 4 }}>
+                            Drag your finger across the photo to paint the object you want to heal, then tap Smart Erase.
+                        </Text>
+                    </ScrollView>
+                )}
+
+                {/* 7. AI Avatar Controls */}
+                {activeTab === 'avatar' && (
+                    <ScrollView contentContainerStyle={s.scrollControls} showsVerticalScrollIndicator={false}>
+                        <Text style={s.sliderTitle}>Select Style Archetype</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.backdropRow}>
+                            {AI_AVATAR_STYLES.map((style) => (
+                                <Pressable
+                                    key={style.id}
+                                    onPress={() => setSelectedAvatarStyle(style.id)}
+                                    style={[s.backdropCard, selectedAvatarStyle === style.id && s.backdropCardActive]}
+                                >
+                                    <Image source={{ uri: style.thumbnail }} style={[s.backdropThumb, selectedAvatarStyle === style.id && { borderColor: ACCENT, borderWidth: 2 }]} />
+                                    <Text style={[s.backdropName, selectedAvatarStyle === style.id && { color: ACCENT, fontWeight: '700' }]} numberOfLines={1}>
+                                        {style.name.split(' ')[0]}
+                                    </Text>
+                                </Pressable>
+                            ))}
+                        </ScrollView>
+
+                        <Text style={s.subSectionTitle}>Select Hairstyle</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fxRow}>
+                            {['Slicked Back', 'Neon Waves', 'Retro Curls', 'Cyber Fade'].map((hair) => (
+                                <Pressable
+                                    key={hair}
+                                    onPress={() => setSelectedHairstyle(hair)}
+                                    style={[s.fxCard, selectedHairstyle === hair && s.fxCardActive]}
+                                >
+                                    <Text style={[s.fxCardText, selectedHairstyle === hair && { color: '#fff' }]}>{hair}</Text>
+                                </Pressable>
+                            ))}
+                        </ScrollView>
+
+                        <Pressable
+                            onPress={handleGenerateAvatar}
+                            disabled={isGeneratingAvatar}
+                            style={({ pressed }) => [
+                                {
+                                    backgroundColor: ACCENT,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    paddingVertical: 14,
+                                    borderRadius: 12,
+                                    gap: 8,
+                                    marginTop: 10,
+                                    opacity: isGeneratingAvatar ? 0.6 : (pressed ? 0.85 : 1),
+                                    shadowColor: ACCENT,
+                                    shadowOffset: { width: 0, height: 4 },
+                                    shadowOpacity: 0.3,
+                                    shadowRadius: 8,
+                                    elevation: 6
+                                }
+                            ]}
+                        >
+                            <Ionicons name="flash" size={16} color="#fff" />
+                            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>
+                                {isGeneratingAvatar ? 'Stylizing Portrait...' : 'Generate AI Avatar'}
+                            </Text>
+                        </Pressable>
+                    </ScrollView>
+                )}
+
+                {/* 8. AI Story Controls */}
+                {activeTab === 'story' && (
+                    <ScrollView contentContainerStyle={s.scrollControls} showsVerticalScrollIndicator={false}>
+                        <Text style={s.sliderTitle}>Select Layout Theme</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fxRow}>
+                            {AI_STORY_TEMPLATES.map((tmpl) => (
+                                <Pressable
+                                    key={tmpl.id}
+                                    onPress={() => setSelectedStoryLayout(tmpl.layout)}
+                                    style={[s.fxCard, selectedStoryLayout === tmpl.layout && s.fxCardActive]}
+                                >
+                                    <Ionicons 
+                                        name={
+                                            tmpl.layout === 'magazine' ? 'book-outline' :
+                                            tmpl.layout === 'retro' ? 'film-outline' :
+                                            tmpl.layout === 'neon' ? 'flash-outline' : 'images-outline'
+                                        } 
+                                        size={14} 
+                                        color={selectedStoryLayout === tmpl.layout ? '#fff' : ACCENT} 
+                                    />
+                                    <Text style={[s.fxCardText, selectedStoryLayout === tmpl.layout && { color: '#fff' }]}>
+                                        {tmpl.name.split(' ')[1] || tmpl.name}
+                                    </Text>
+                                </Pressable>
+                            ))}
+                        </ScrollView>
+
+                        <Text style={s.subSectionTitle}>Custom Story Title</Text>
+                        <TextInput
+                            style={{
+                                backgroundColor: SURFACE,
+                                borderWidth: 1,
+                                borderColor: BORDER,
+                                borderRadius: 10,
+                                paddingHorizontal: 14,
+                                paddingVertical: 10,
+                                color: '#fff',
+                                fontSize: 13,
+                                marginTop: 4
+                            }}
+                            placeholder="Enter story text overlay..."
+                            placeholderTextColor={TEXT_TERTIARY}
+                            value={storyTitleText}
+                            onChangeText={setStoryTitleText}
+                            maxLength={36}
+                        />
+
+                        {selectedStoryLayout === 'neon' && (
+                            <View style={s.sliderRow}>
+                                <View style={s.sliderLabelRow}>
+                                    <Text style={s.sliderTitle}>Text Font Size</Text>
+                                    <Text style={s.sliderVal}>{storyTextSize}px</Text>
+                                </View>
+                                <Slider
+                                    style={{ width: '100%', height: 36 }}
+                                    minimumValue={18}
+                                    maximumValue={48}
+                                    step={1}
+                                    value={storyTextSize}
+                                    onValueChange={setStoryTextSize}
+                                    minimumTrackTintColor={ACCENT}
+                                    maximumTrackTintColor={BORDER}
+                                />
+                            </View>
+                        )}
+                    </ScrollView>
+                )}
             </View>
 
-            {/* Bottom Sub-Navigation bar */}
-            <View style={[s.bottomNav, { paddingBottom: insets.bottom + 12 }]}>
-                {[
-                    { key: 'retouch', label: 'Retouch', icon: 'sparkles' },
-                    { key: 'background', label: 'Backdrop', icon: 'image' },
-                    { key: 'video', label: 'Trim & FX', icon: 'videocam' },
-                    { key: 'filters', label: 'AI Presets', icon: 'color-palette' },
-                    { key: 'audio', label: 'Music', icon: 'musical-notes' }
-                ].map((item) => (
-                    <Pressable
-                        key={item.key}
-                        onPress={() => setActiveTab(item.key as ActiveTab)}
-                        style={s.bottomNavItem}
-                    >
-                        <Ionicons 
-                            name={activeTab === item.key ? (item.icon as any) : (`${item.icon}-outline` as any)} 
-                            size={18} 
-                            color={activeTab === item.key ? ACCENT : TEXT_SECONDARY} 
-                        />
-                        <Text style={[s.bottomNavText, activeTab === item.key && { color: ACCENT, fontWeight: '700' }]}>
-                            {item.label}
-                        </Text>
-                    </Pressable>
-                ))}
+            {/* Bottom Sub-Navigation bar (Scrollable Horizontal Toolstrip) */}
+            <View style={{ borderTopWidth: 1, borderTopColor: BORDER, backgroundColor: SURFACE, paddingVertical: 8, paddingBottom: insets.bottom + 8 }}>
+                <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    contentContainerStyle={{ paddingHorizontal: 16, gap: 20 }}
+                >
+                    {bottomNavItems.map((item) => (
+                        <Pressable
+                            key={item.key}
+                            onPress={() => setActiveTab(item.key as ActiveTab)}
+                            style={{ alignItems: 'center', gap: 4, minWidth: 56 }}
+                        >
+                            <Ionicons 
+                                name={activeTab === item.key ? (item.icon as any) : (`${item.icon}-outline` as any)} 
+                                size={18} 
+                                color={activeTab === item.key ? ACCENT : TEXT_SECONDARY} 
+                            />
+                            <Text style={[s.bottomNavText, activeTab === item.key && { color: ACCENT, fontWeight: '700' }]}>
+                                {item.label}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </ScrollView>
             </View>
         </View>
     )
