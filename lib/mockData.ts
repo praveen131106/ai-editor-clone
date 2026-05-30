@@ -1,5 +1,5 @@
 /**
- * 🎨 Mock / placeholder data for GlamX AI.
+ * 🎨 Mock / placeholder data for Lumi AI.
  *
  * Provides high-fidelity creative templates, portrait assets, background overlays,
  * audio tracks, and maps standard structures to represent editing projects history.
@@ -59,7 +59,7 @@ export type FaqItem = {
     answer: string
 }
 
-// ─── Custom Creative Types (For GlamX Editor) ──────────────────────────────────
+// ─── Custom Creative Types (For Lumi Editor) ──────────────────────────────────
 
 export type AIStyleFilter = {
     id: string
@@ -109,7 +109,7 @@ export type AIStoryTemplate = {
 
 export const demoUser = {
     fullName: 'Praveen Nayak',
-    email: 'praveen@glamx.ai',
+    email: 'praveen@lumi.ai',
     role: 'Creator Pro',
     teamName: 'Studio Team',
     initials: 'PN',
@@ -396,7 +396,7 @@ export const notificationItems: NotificationItem[] = [
     {
         id: 'notif-2',
         title: 'Influencer spotlight',
-        body: 'Taylor used your GlamX Gold Glow layout for Reels!',
+        body: 'Taylor used your Lumi Gold Glow layout for Reels!',
         timeAgo: '58m ago',
         category: 'team',
         read: false,
@@ -417,7 +417,7 @@ export const supportFaq: FaqItem[] = [
     {
         id: 'faq-1',
         question: 'How does the AI skin retouching work?',
-        answer: 'GlamX AI runs client-side bilateral surface blur and edge-preserving filters. This detects skin gradients and smooths blemishes while keeping features like eyes, lips, and hair sharp.',
+        answer: 'Lumi AI runs client-side bilateral surface blur and edge-preserving filters. This detects skin gradients and smooths blemishes while keeping features like eyes, lips, and hair sharp.',
     },
     {
         id: 'faq-2',

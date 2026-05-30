@@ -14,7 +14,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { LinearGradient } from 'expo-linear-gradient'
-import { Audio } from 'expo-av'
+let Audio: any = null
+let Video: any = null
+let ResizeMode: any = { CONTAIN: 'contain' }
+
+try {
+    const expoAv = require('expo-av')
+    Audio = expoAv.Audio
+    Video = expoAv.Video
+    if (expoAv.ResizeMode) {
+        ResizeMode = expoAv.ResizeMode
+    }
+} catch (e) {
+    console.warn('[expo-av] Native modules are not available in this client, falling back to simulated engine.')
+}
 
 import { Text } from '@/components/ui/Text'
 import { Card } from '@/components/ui/Card'
@@ -135,7 +148,7 @@ export default function EditorScreen() {
     // 5. Soundtrack Overlay
     const [activeAudioId, setActiveAudioId] = useState<string>('none')
     const [audioVolume, setAudioVolume] = useState(80)
-    const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null)
+    const [soundObject, setSoundObject] = useState<any | null>(null)
 
     // Detect if model is standard stock to render high-fidelity mask cutout
     const stockModel = useMemo(() => {
@@ -376,11 +389,26 @@ export default function EditorScreen() {
             >
                 {/* 1. Base Layer (Original Image / Video representation) */}
                 <View style={StyleSheet.absoluteFill}>
-                    <Image source={{ uri: currentMediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                    {mediaType === 'video' && Video ? (
+                        <Video
+                            source={{ uri: currentMediaUrl }}
+                            style={s.viewportMedia}
+                            resizeMode={ResizeMode.CONTAIN}
+                            shouldPlay={isVideoPlaying}
+                            isLooping
+                            isMuted={activeAudioId === 'none'}
+                            volume={audioVolume / 100}
+                        />
+                    ) : (
+                        <Image source={{ uri: currentMediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                    )}
                     {mediaType === 'video' && (
-                        <View style={s.playOverlay}>
+                        <Pressable 
+                            onPress={() => setIsVideoPlaying(prev => !prev)} 
+                            style={s.playOverlay}
+                        >
                             <Ionicons name={isVideoPlaying ? 'pause' : 'play'} size={24} color="#fff" />
-                        </View>
+                        </Pressable>
                     )}
                 </View>
 
@@ -402,20 +430,53 @@ export default function EditorScreen() {
                         <View style={{ width: SW, height: VIEWPORT_H }}>
                             {stockModel ? (
                                 // Flawless transparent stock mask overlay
-                                <Image 
-                                    source={{ uri: currentMediaUrl }} 
-                                    style={[s.viewportMedia as any, { tintColor: selectedFx === 'neon' ? ACCENT : undefined }]} 
-                                    resizeMode="contain" 
-                                  />
+                                mediaType === 'video' && Video ? (
+                                    <Video
+                                        source={{ uri: currentMediaUrl }}
+                                        style={[s.viewportMedia, { tintColor: selectedFx === 'neon' ? ACCENT : undefined } as any]}
+                                        resizeMode={ResizeMode.CONTAIN}
+                                        shouldPlay={isVideoPlaying}
+                                        isLooping
+                                        isMuted
+                                    />
+                                ) : (
+                                    <Image 
+                                        source={{ uri: currentMediaUrl }} 
+                                        style={[s.viewportMedia as any, { tintColor: selectedFx === 'neon' ? ACCENT : undefined }]} 
+                                        resizeMode="contain" 
+                                    />
+                                )
                             ) : (
                                 // Smart edge mask fallback
-                                <Image source={{ uri: currentMediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                                mediaType === 'video' && Video ? (
+                                    <Video
+                                        source={{ uri: currentMediaUrl }}
+                                        style={s.viewportMedia}
+                                        resizeMode={ResizeMode.CONTAIN}
+                                        shouldPlay={isVideoPlaying}
+                                        isLooping
+                                        isMuted
+                                    />
+                                ) : (
+                                    <Image source={{ uri: currentMediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                                )
                             )}
                         </View>
                     ) : (
                         <View style={{ width: SW, height: VIEWPORT_H }}>
                             {/* Standard original image displaying beauty filter tweaks (bilateral blur, lips red glow overlay) */}
-                            <Image source={{ uri: mediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                            {mediaType === 'video' && Video ? (
+                                <Video
+                                    source={{ uri: mediaUrl }}
+                                    style={s.viewportMedia}
+                                    resizeMode={ResizeMode.CONTAIN}
+                                    shouldPlay={isVideoPlaying}
+                                    isLooping
+                                    isMuted
+                                />
+                            ) : (
+                                <Image source={{ uri: mediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                            )}
                             
                             {/* Lip Tint Overlay (Dynamic SVG-like absolute layer) */}
                             {lipColor && (
@@ -1363,23 +1424,42 @@ const s = StyleSheet.create({
 
 // Custom reactive 60fps Slider to work cleanly on web & mobile without extra native binary linking dependencies
 function Slider({ minimumValue = 0, maximumValue = 100, step = 1, value = 0, onValueChange, minimumTrackTintColor = ACCENT, maximumTrackTintColor = BORDER }: any) {
-    const handleTouch = (event: any) => {
-        const { locationX } = event.nativeEvent
-        const width = SW - 40
-        const percentage = Math.max(0, Math.min(1, locationX / width))
+    const [sliderWidth, setSliderWidth] = useState(SW - 40)
+    const [sliderLeft, setSliderLeft] = useState(20)
+    const viewRef = useRef<View>(null)
+
+    const updateValue = (pageX: number) => {
+        const relativeX = pageX - sliderLeft
+        const percentage = Math.max(0, Math.min(1, relativeX / sliderWidth))
         const rawValue = minimumValue + percentage * (maximumValue - minimumValue)
         const steppedValue = Math.round(rawValue / step) * step
         onValueChange?.(steppedValue)
     }
 
+    const handleTouch = (event: any) => {
+        const { pageX } = event.nativeEvent
+        updateValue(pageX)
+    }
+
     const percentage = ((value - minimumValue) / (maximumValue - minimumValue)) * 100
 
     return (
-        <Pressable onPress={handleTouch} style={{ height: 36, justifyContent: 'center', width: '100%' }}>
+        <View
+            ref={viewRef}
+            onLayout={() => {
+                viewRef.current?.measure((x, y, width, height, pageX, pageY) => {
+                    if (width) setSliderWidth(width)
+                    if (pageX) setSliderLeft(pageX)
+                })
+            }}
+            onTouchStart={handleTouch}
+            onTouchMove={handleTouch}
+            style={{ height: 36, justifyContent: 'center', width: '100%', pointerEvents: 'auto' }}
+        >
             <View style={{ height: 4, width: '100%', backgroundColor: maximumTrackTintColor, borderRadius: 2, position: 'relative' }}>
                 <View style={{ height: '100%', width: `${percentage}%`, backgroundColor: minimumTrackTintColor, borderRadius: 2 }} />
                 <View style={{ position: 'absolute', top: -6, left: `${percentage}%`, marginLeft: -8, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff', borderWidth: 2, borderColor: minimumTrackTintColor }} />
             </View>
-        </Pressable>
+        </View>
     )
 }
