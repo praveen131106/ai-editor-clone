@@ -4,162 +4,230 @@ import {
     ScrollView,
     StyleSheet,
     Pressable,
-    RefreshControl,
+    Image,
+    Dimensions
 } from 'react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useQueryClient } from '@tanstack/react-query'
+import { Ionicons } from '@expo/vector-icons'
+
 import { Text } from '@/components/ui/Text'
 import { Card } from '@/components/ui/Card'
 import TextInputField from '@/components/ui/TextInputField'
 import {
+    ACCENT,
     BG,
     BORDER,
+    SURFACE,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     TEXT_TERTIARY,
 } from '@/lib/theme'
 import { TAB_BAR_CLEARANCE } from '@/components/TabBar'
-import StatusBadge from '@/components/ui/StatusBadge'
-import { statusLabel, type ItemStatus } from '@/lib/mockData'
-import { useItems } from '@/hooks/useItems'
+import { AI_STYLE_FILTERS, type AIStyleFilter } from '@/lib/mockData'
 
-type FilterType = 'all' | ItemStatus
+const { width: SW } = Dimensions.get('window')
 
-const FILTERS: Array<{ key: FilterType; label: string }> = [
-    { key: 'all', label: 'All' },
-    { key: 'active', label: 'Active' },
-    { key: 'pending', label: 'Pending' },
-    { key: 'archived', label: 'Archived' },
-]
+type CategoryType = 'All' | 'Glitch' | 'Glow' | 'Comic' | 'Retro' | 'Cyber'
+
+const CATEGORIES: CategoryType[] = ['All', 'Glitch', 'Glow', 'Comic', 'Retro', 'Cyber']
 
 export default function ExploreScreen() {
     const insets = useSafeAreaInsets()
-    const [refreshing, setRefreshing] = useState(false)
     const [query, setQuery] = useState('')
-    const [activeFilter, setActiveFilter] = useState<FilterType>('all')
-    const queryClient = useQueryClient()
+    const [activeCategory, setActiveCategory] = useState<CategoryType>('All')
 
-    const { data: allItems = [] } = useItems()
+    const filteredFilters = useMemo(() => {
+        const byCategory = activeCategory === 'All'
+            ? AI_STYLE_FILTERS
+            : AI_STYLE_FILTERS.filter((f) => f.category === activeCategory)
 
-    const filtered = useMemo(() => {
-        const byStatus = activeFilter === 'all'
-            ? allItems
-            : allItems.filter((item) => item.status === activeFilter)
-
-        if (!query.trim()) return byStatus
+        if (!query.trim()) return byCategory
 
         const q = query.trim().toLowerCase()
-        return byStatus.filter((item) => {
+        return byCategory.filter((f) => {
             return (
-                item.name.toLowerCase().includes(q)
-                || item.owner.toLowerCase().includes(q)
-                || item.summary.toLowerCase().includes(q)
+                f.name.toLowerCase().includes(q)
+                || f.tagline.toLowerCase().includes(q)
+                || f.category.toLowerCase().includes(q)
             )
         })
-    }, [activeFilter, query, allItems])
+    }, [activeCategory, query])
 
-    const onRefresh = async () => {
-        setRefreshing(true)
-        await queryClient.invalidateQueries({ queryKey: ['items'] })
-        setRefreshing(false)
+    const startFilterEdit = (filter: AIStyleFilter) => {
+        router.push({
+            pathname: '/editor',
+            params: {
+                mediaType: 'image',
+                mediaUrl: filter.sampleBefore,
+                filterId: filter.id,
+                initialTool: 'filters'
+            }
+        })
     }
 
     return (
         <ScrollView
             style={{ flex: 1, backgroundColor: BG }}
             contentContainerStyle={[s.container, { paddingTop: insets.top + 16, paddingBottom: TAB_BAR_CLEARANCE + 16 }]}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
             showsVerticalScrollIndicator={false}
         >
+            {/* Header */}
             <View style={s.header}>
-                <Text style={s.title}>Explore</Text>
-                <Text style={s.subtitle}>Search and browse all items.</Text>
+                <Text style={s.title}>AI Styles</Text>
+                <Text style={s.subtitle}>Explore viral styles and trending effects.</Text>
             </View>
 
-            <TextInputField
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search by name, owner, or description"
-            />
+            {/* Search input with custom cyberpunk details */}
+            <View style={s.searchWrap}>
+                <Ionicons name="search" size={18} color={TEXT_TERTIARY} style={s.searchIcon} />
+                <TextInputField
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Search styles (e.g. glitch, comic...)"
+                    style={s.searchInput}
+                />
+            </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
-                {FILTERS.map((filter) => {
-                    const active = filter.key === activeFilter
+            {/* Categories horizontal list */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
+                {CATEGORIES.map((cat) => {
+                    const active = cat === activeCategory
                     return (
                         <Pressable
-                            key={filter.key}
-                            onPress={() => setActiveFilter(filter.key)}
-                            style={[s.filterChip, active && s.filterChipActive]}
+                            key={cat}
+                            onPress={() => setActiveCategory(cat)}
+                            style={[s.catChip, active && s.catChipActive]}
                         >
-                            <Text style={[s.filterText, active && s.filterTextActive]}>{filter.label}</Text>
+                            <Text style={[s.catText, active && s.catTextActive]}>{cat}</Text>
                         </Pressable>
                     )
                 })}
             </ScrollView>
 
-            {filtered.length === 0 ? (
+            {/* Filters catalog grid */}
+            {filteredFilters.length === 0 ? (
                 <Card style={s.emptyCard}>
-                    <Text style={s.emptyTitle}>No matches found</Text>
-                    <Text style={s.emptySub}>Try another keyword or switch filters.</Text>
+                    <Ionicons name="sparkles-outline" size={32} color={TEXT_TERTIARY} />
+                    <Text style={s.emptyTitle}>No matching filters</Text>
+                    <Text style={s.emptySub}>Try another search query or switch categories.</Text>
                 </Card>
             ) : (
-                filtered.map((item) => (
-                    <Pressable
-                        key={item.id}
-                        onPress={() => router.push(`/detail/${item.id}`)}
-                        style={({ pressed }) => [pressed && { opacity: 0.72 }]}
-                    >
-                        <Card style={s.itemCard}>
-                            <View style={s.topRow}>
-                                <Text style={s.itemName}>{item.name}</Text>
-                                <StatusBadge status={item.status} label={statusLabel(item.status)} />
+                <View style={s.gridContainer}>
+                    {filteredFilters.map((filter) => (
+                        <Pressable
+                            key={filter.id}
+                            onPress={() => startFilterEdit(filter)}
+                            style={({ pressed }) => [s.filterCard, pressed && { opacity: 0.9 }]}
+                        >
+                            <Image source={{ uri: filter.sampleAfter }} style={s.filterImage} />
+                            <View style={s.gradientOverlay} />
+                            
+                            <View style={s.cardBadge}>
+                                <Text style={s.cardBadgeText}>{filter.category}</Text>
                             </View>
 
-                            <Text style={s.ownerText}>Owner: {item.owner}</Text>
-                            <Text style={s.summaryText}>{item.summary}</Text>
-
-                            <View style={s.metaRow}>
-                                <Text style={s.metaText}>Completion {item.completion}%</Text>
-                                <Text style={s.metaText}>Health {item.health}</Text>
-                                <Text style={s.metaText}>{item.activeUsers} active</Text>
+                            <View style={s.cardContent}>
+                                <Text style={s.cardName}>{filter.name}</Text>
+                                <Text style={s.cardTagline} numberOfLines={1}>{filter.tagline}</Text>
                             </View>
-                        </Card>
-                    </Pressable>
-                ))
+
+                            <View style={s.useBtn}>
+                                <Ionicons name="play" size={14} color="#fff" />
+                                <Text style={s.useBtnText}>USE</Text>
+                            </View>
+                        </Pressable>
+                    ))}
+                </View>
             )}
         </ScrollView>
     )
 }
 
 const s = StyleSheet.create({
-    container: { paddingHorizontal: 20, gap: 12 },
+    container: { paddingHorizontal: 20, gap: 14 },
     header: { gap: 4, marginBottom: 2 },
-    title: { fontSize: 24, fontWeight: '800', color: TEXT_PRIMARY, letterSpacing: -0.5 },
+    title: { fontSize: 24, fontWeight: '900', color: TEXT_PRIMARY, letterSpacing: -0.5 },
     subtitle: { fontSize: 13, color: TEXT_SECONDARY },
-    filterRow: { gap: 8, paddingVertical: 4 },
-    filterChip: {
+    
+    // Search wrap
+    searchWrap: { position: 'relative', zIndex: 1 },
+    searchIcon: { position: 'absolute', left: 14, top: 15, zIndex: 10 },
+    searchInput: { paddingLeft: 40, height: 48, backgroundColor: SURFACE, borderRadius: 12, borderWidth: 1, borderColor: BORDER },
+
+    // Category Tags
+    categoryRow: { gap: 8, paddingVertical: 4 },
+    catChip: {
         borderWidth: 1,
-        borderColor: BORDER,
+        borderColor: 'rgba(255,255,255,0.06)',
         borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        backgroundColor: 'rgba(255,255,255,0.04)',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        backgroundColor: SURFACE,
     },
-    filterChipActive: {
-        backgroundColor: 'rgba(255,255,255,0.14)',
-        borderColor: 'rgba(255,255,255,0.25)',
+    catChipActive: {
+        backgroundColor: ACCENT,
+        borderColor: ACCENT,
     },
-    filterText: { fontSize: 12, color: TEXT_SECONDARY, fontWeight: '600' },
-    filterTextActive: { color: TEXT_PRIMARY },
-    emptyCard: { alignItems: 'center', paddingVertical: 24, gap: 4, marginTop: 8 },
-    emptyTitle: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
-    emptySub: { fontSize: 13, color: TEXT_SECONDARY },
-    itemCard: { gap: 6, paddingVertical: 13 },
-    topRow: { flexDirection: 'row', gap: 8 },
-    itemName: { flex: 1, fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
-    ownerText: { fontSize: 12, color: TEXT_TERTIARY },
-    summaryText: { fontSize: 12.5, lineHeight: 18, color: TEXT_SECONDARY },
-    metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
-    metaText: { fontSize: 11, color: TEXT_TERTIARY },
+    catText: { fontSize: 12.5, color: TEXT_SECONDARY, fontWeight: '700' },
+    catTextActive: { color: '#fff' },
+
+    // Filters Grid
+    gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 4 },
+    filterCard: {
+        width: (SW - 52) / 2,
+        height: SW * 0.65,
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: SURFACE,
+        position: 'relative'
+    },
+    filterImage: { width: '100%', height: '100%' },
+    gradientOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        // Simple dark bottom block simulation
+    },
+    cardBadge: {
+        position: 'absolute',
+        top: 10,
+        left: 10,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 999,
+        borderWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.15)'
+    },
+    cardBadgeText: { fontSize: 9, fontWeight: '800', color: '#fff', textTransform: 'uppercase' },
+    cardContent: {
+        position: 'absolute',
+        bottom: 46,
+        left: 12,
+        right: 12,
+        gap: 2
+    },
+    cardName: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
+    cardTagline: { fontSize: 10, color: TEXT_SECONDARY },
+    
+    useBtn: {
+        position: 'absolute',
+        bottom: 12,
+        left: 12,
+        right: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: ACCENT,
+        paddingVertical: 6,
+        borderRadius: 8,
+        gap: 4
+    },
+    useBtnText: { fontSize: 10, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
+
+    emptyCard: { alignItems: 'center', paddingVertical: 32, gap: 6 },
+    emptyTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
+    emptySub: { fontSize: 12, color: TEXT_SECONDARY, textAlign: 'center' },
 })

@@ -15,6 +15,9 @@ function rowToItem(row: any): ItemSummary {
             ? new Date(row.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             : '',
         summary: row.summary ?? '',
+        thumbnail: row.thumbnail ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop',
+        mediaType: row.media_type ?? 'image',
+        mediaUrl: row.media_url ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop',
     }
 }
 

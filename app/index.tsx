@@ -24,9 +24,9 @@ const { width: SW, height: SH } = Dimensions.get('window')
 // ─── Feature items shown on the landing page ──────────────────────────────────
 // Update these to match your app's value props.
 const FEATURES = [
-    { icon: 'shield-checkmark-outline' as const, title: 'Secure by Default', desc: 'End-to-end encrypted auth' },
-    { icon: 'flash-outline' as const, title: 'Blazing Fast', desc: 'Optimized for performance' },
-    { icon: 'cloud-done-outline' as const, title: 'Always in Sync', desc: 'Real-time data across devices' },
+    { icon: 'sparkles-outline' as const, title: 'AI Beauty Studio', desc: 'One-tap skin retouching & custom makeup' },
+    { icon: 'color-wand-outline' as const, title: 'Smart BG Eraser', desc: 'Isolate & replace backdrops instantly' },
+    { icon: 'videocam-outline' as const, title: 'Video Trimmer & Glitch', desc: 'VHS styles, retro audio & timeline trim' },
 ]
 
 export default function LandingScreen() {
@@ -95,8 +95,8 @@ export default function LandingScreen() {
             {/* Background gradient */}
             <LinearGradient
                 pointerEvents="none"
-                colors={[BG, '#0b1414', '#081010', BG]}
-                locations={[0, 0.3, 0.6, 1]}
+                colors={[BG, '#1a0b2e', '#120520', BG]}
+                locations={[0, 0.4, 0.7, 1]}
                 style={StyleSheet.absoluteFillObject}
             />
 
