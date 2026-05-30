@@ -41,9 +41,14 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "lumiai" }
+            {
+              "scheme": "lumiai"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -72,7 +77,10 @@
           "organization": "your-org"
         }
       ],
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "expo-video",
+      "expo-web-browser",
+      "expo-asset"
     ],
     "extra": {
       "router": {},
