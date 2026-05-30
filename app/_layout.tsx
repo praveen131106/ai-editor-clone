@@ -121,16 +121,11 @@ function LumiBootstrap({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // 1. Listen to reactive notification alerts
-    const handleNewNotif = (event: any) => {
-      const notif = event.detail
+    const notifSub = DeviceEventEmitter.addListener('lumi_new_notification', (notif: any) => {
       if (notif) {
         showToast(notif.title, 'success')
       }
-    }
-    
-    if (typeof window !== 'undefined') {
-      window.addEventListener('lumi_new_notification', handleNewNotif)
-    }
+    })
 
     // 2. Deep-linking incoming link listener
     const handleDeepLink = (event: { url: string }) => {
@@ -160,9 +155,7 @@ function LumiBootstrap({ children }: { children: React.ReactNode }) {
 
     return () => {
       sub.remove()
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('lumi_new_notification', handleNewNotif)
-      }
+      notifSub.remove()
     }
   }, [showToast])
 

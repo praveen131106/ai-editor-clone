@@ -6,7 +6,8 @@ import {
     Pressable,
     Image,
     Alert,
-    ActivityIndicator
+    ActivityIndicator,
+    DeviceEventEmitter
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, router } from 'expo-router'
@@ -82,17 +83,10 @@ export default function ActivityScreen() {
     }, [navigation])
 
     useEffect(() => {
-        const handleNewNotif = () => {
+        const sub = DeviceEventEmitter.addListener('lumi_new_notification', () => {
             loadNotifications()
-        }
-        if (typeof window !== 'undefined') {
-            window.addEventListener('lumi_new_notification', handleNewNotif)
-        }
-        return () => {
-            if (typeof window !== 'undefined') {
-                window.removeEventListener('lumi_new_notification', handleNewNotif)
-            }
-        }
+        })
+        return () => sub.remove()
     }, [])
 
     const filteredCreations = useMemo(() => {

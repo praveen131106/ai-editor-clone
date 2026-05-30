@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { DeviceEventEmitter } from 'react-native'
 import { notificationItems as defaultNotifications, type NotificationItem } from './mockData'
 
 /**
@@ -40,10 +41,8 @@ export async function triggerLocalNotification(title: string, body: string): Pro
         notifications = [newNotif, ...notifications]
         await AsyncStorage.setItem('lumi_notifications', JSON.stringify(notifications))
         
-        // Dispatch local event to notify screens of fresh alerts
-        if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('lumi_new_notification', { detail: newNotif }))
-        }
+        // Dispatch native event safely on all platforms
+        DeviceEventEmitter.emit('lumi_new_notification', newNotif)
     } catch (err) {
         console.error('[Notifications] Failed to save local alert:', err)
     }
