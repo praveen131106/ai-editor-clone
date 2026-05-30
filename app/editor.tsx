@@ -307,7 +307,7 @@ export default function EditorScreen() {
 
                         <View style={s.sliderRow}>
                             <View style={s.sliderLabelRow}>
-                                <Text style={s.sliderTitle}>Glam Glow</Text>
+                                <Text style={s.sliderTitle}>Lumi Glow</Text>
                                 <Text style={s.sliderVal}>{glow}%</Text>
                             </View>
                             <Slider

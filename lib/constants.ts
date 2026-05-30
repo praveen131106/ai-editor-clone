@@ -11,20 +11,20 @@
  */
 
 /** Display name shown in headers, onboarding, and the landing page. */
-export const APP_NAME = 'GlamX AI'
+export const APP_NAME = 'Lumi AI'
 
 /** URL scheme matching expo.scheme in app.json — used for OAuth deep link callbacks. */
-export const APP_SCHEME = 'glamxai'
+export const APP_SCHEME = 'lumiai'
 
 /** Support email shown on the Support screen. */
-export const APP_SUPPORT_EMAIL = 'support@glamx.ai'
+export const APP_SUPPORT_EMAIL = 'support@lumi.ai'
 
 /** Documentation URL shown on the Support screen. */
-export const APP_DOCS_URL = 'https://glamx.ai/docs'
+export const APP_DOCS_URL = 'https://lumi.ai/docs'
 
 /** One-liner shown on the landing page below the app name. */
-export const APP_TAGLINE = 'AI Video & Photo Editor Studio'
+export const APP_TAGLINE = 'Creative Photo & Video Studio'
 
 /** Short description used in marketing / onboarding contexts. */
 export const APP_DESCRIPTION =
-  'The ultimate AI-powered creative suite for photo & video editing. Turn standard shots into viral influencer content with skin retouching, background swapping, glitches, and avatar generators.'
+  'Lumi AI is the ultimate minimalist creative suite for photo & video editing. Turn standard shots into viral influencer content with skin retouching, background swapping, glitches, and avatar generators.'

@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "GlamX AI",
-    "slug": "glamx-ai",
+    "name": "Lumi AI",
+    "slug": "lumi-ai",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "glamxai",
+    "scheme": "lumiai",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
@@ -14,13 +14,13 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.praveen.glamx",
+      "bundleIdentifier": "com.praveen.lumi",
       "associatedDomains": [
         "applinks:REPLACE_WITH_YOUR_DOMAIN"
       ]
     },
     "android": {
-      "package": "com.praveen.glamx",
+      "package": "com.praveen.lumi",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0d0d0d"
@@ -41,7 +41,7 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "glamxai" }
+            { "scheme": "lumiai" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }

@@ -67,12 +67,12 @@ export default function HomeScreen() {
     const loadProjects = async () => {
         setIsLoadingProjects(true)
         try {
-            const stored = await AsyncStorage.getItem('glamx_projects')
+            const stored = await AsyncStorage.getItem('lumi_projects')
             if (stored) {
                 setProjects(JSON.parse(stored))
             } else {
                 // Seed default mock projects if none exist
-                await AsyncStorage.setItem('glamx_projects', JSON.stringify(defaultProjects))
+                await AsyncStorage.setItem('lumi_projects', JSON.stringify(defaultProjects))
                 setProjects(defaultProjects)
             }
         } catch (e) {
@@ -156,7 +156,7 @@ export default function HomeScreen() {
             {/* Header / Brand bar */}
             <View style={s.header}>
                 <View>
-                    <Text style={s.brandLogo}>GlamX <Text style={{ color: ACCENT }}>AI</Text></Text>
+                    <Text style={s.brandLogo}>Lumi <Text style={{ color: ACCENT }}>AI</Text></Text>
                     <Text style={s.subGreeting}>{greeting}, Creator</Text>
                 </View>
                 <Pressable
@@ -353,7 +353,7 @@ export default function HomeScreen() {
                             </Pressable>
                         </View>
                         <View style={s.modalBody}>
-                            <Text style={s.modalSubtitle}>Choose a pre-loaded stock model to test GlamX AI features instantly, or upload from your device:</Text>
+                            <Text style={s.modalSubtitle}>Choose a pre-loaded stock model to test Lumi AI features instantly, or upload from your device:</Text>
 
                             {/* Stock models row */}
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.stockRow}>

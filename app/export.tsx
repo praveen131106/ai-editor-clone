@@ -106,13 +106,13 @@ export default function ExportScreen() {
     // Save project metadata to AsyncStorage history
     const saveProjectToHistory = async () => {
         try {
-            const stored = await AsyncStorage.getItem('glamx_projects')
+            const stored = await AsyncStorage.getItem('lumi_projects')
             let projects: ItemSummary[] = stored ? JSON.parse(stored) : [...defaultProjects]
             
             // Construct a new completed item
             const newItem: ItemSummary = {
                 id: `proj-${Date.now()}`,
-                name: `GlamX ${mediaType === 'image' ? 'Photo' : 'Video'} #${projects.length + 1}`,
+                name: `Lumi ${mediaType === 'image' ? 'Photo' : 'Video'} #${projects.length + 1}`,
                 owner: 'Praveen Nayak',
                 status: 'active',
                 completion: 100,
@@ -127,7 +127,7 @@ export default function ExportScreen() {
 
             // Append to list and save
             const updated = [newItem, ...projects]
-            await AsyncStorage.setItem('glamx_projects', JSON.stringify(updated))
+            await AsyncStorage.setItem('lumi_projects', JSON.stringify(updated))
             
             setIsRendering(false)
             setIsSuccess(true)

@@ -40,11 +40,11 @@ export default function ActivityScreen() {
     const loadCreations = async () => {
         setIsLoading(true)
         try {
-            const stored = await AsyncStorage.getItem('glamx_projects')
+            const stored = await AsyncStorage.getItem('lumi_projects')
             if (stored) {
                 setCreations(JSON.parse(stored))
             } else {
-                await AsyncStorage.setItem('glamx_projects', JSON.stringify(defaultProjects))
+                await AsyncStorage.setItem('lumi_projects', JSON.stringify(defaultProjects))
                 setCreations(defaultProjects)
             }
         } catch (e) {
@@ -80,7 +80,7 @@ export default function ActivityScreen() {
                     onPress: async () => {
                         const updated = creations.filter((item) => item.id !== id)
                         setCreations(updated)
-                        await AsyncStorage.setItem('glamx_projects', JSON.stringify(updated))
+                        await AsyncStorage.setItem('lumi_projects', JSON.stringify(updated))
                     }
                 }
             ]

@@ -13,14 +13,14 @@
 
 // ── Primary brand color ───────────────────────────────────────────────────────
 // 🎨 Change this one value to rebrand the whole app
-export const ACCENT = '#d946ef'           // Fuchsia/Magenta Glam color
+export const ACCENT = '#f43f5e'           // Rose Pink Lumi color
 
 // Derived from ACCENT — adjust opacity as needed
-export const ACCENT_DIM = 'rgba(217,70,239,0.12)'
-export const ACCENT_BORDER = 'rgba(217,70,239,0.30)'
-export const ACCENT_GLOW = 'rgba(217,70,239,0.20)'
+export const ACCENT_DIM = 'rgba(244,63,94,0.12)'
+export const ACCENT_BORDER = 'rgba(244,63,94,0.30)'
+export const ACCENT_GLOW = 'rgba(244,63,94,0.20)'
 // Text color on dark background using accent tone
-export const ACCENT_LIGHT = '#f5d0fe'
+export const ACCENT_LIGHT = '#fecdd3'
 
 // ── Backgrounds ───────────────────────────────────────────────────────────────
 export const BG = '#0d0d0d'        // main app background
