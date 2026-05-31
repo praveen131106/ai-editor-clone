@@ -125,7 +125,7 @@ export default function EditorScreen() {
     const [storyTextColor, setStoryTextColor] = useState('#ffffff')
 
     const currentMediaUrl = useMemo(() => {
-        if (activeTab === 'avatar' && avatarImageUrl) return avatarImageUrl
+        if (activeTab === 'avatar' && avatarImageUrl && avatarImageUrl !== 'generated') return avatarImageUrl
         return mediaUrlState
     }, [activeTab, avatarImageUrl, mediaUrlState])
 
@@ -133,7 +133,7 @@ export default function EditorScreen() {
     // 1. AI Beauty Parameters
     const [smoothing, setSmoothing] = useState(60)
     const [glow, setGlow] = useState(40)
-    const [lipColor, setLipColor] = useState('#ff007f') // Default magenta pink
+    const [lipColor, setLipColor] = useState('') // Default empty, no red mark
     const [eyeSize, setEyeSize] = useState(1.05) // Widen scale factor (1.0 to 1.20)
     const [faceSlim, setFaceSlim] = useState(0) // face slimming intensity (0 to 100)
     const [brightness, setBrightness] = useState(50)
@@ -469,12 +469,7 @@ export default function EditorScreen() {
             if (progress >= 100) {
                 clearInterval(interval)
                 setIsGeneratingAvatar(false)
-                
-                // Map style selection to mock stylizations
-                const styleObj = AI_AVATAR_STYLES.find(s => s.id === selectedAvatarStyle)
-                if (styleObj) {
-                    setAvatarImageUrl(styleObj.sampleUrl)
-                }
+                setAvatarImageUrl('generated')
             }
         }, 100)
     }
@@ -483,13 +478,13 @@ export default function EditorScreen() {
     const navigateToExport = async () => {
         setIsSaving(true)
         try {
-            let finalUri = (activeTab === 'avatar' && avatarImageUrl) ? avatarImageUrl : mediaUrlState
+            let finalUri = (activeTab === 'avatar' && avatarImageUrl && avatarImageUrl !== 'generated') ? avatarImageUrl : mediaUrlState
             
             // If the user has made ANY changes, let's capture the view ref directly to bake all edits!
             if (
                 smoothing > 0 || glow > 0 || lipColor || warmth !== 50 || 
                 brightness !== 50 || contrast !== 50 || saturation !== 50 || sharpness > 0 || 
-                isBgRemoved || isObjectErased || activeTab === 'story'
+                isBgRemoved || isObjectErased || activeTab === 'story' || activeTab === 'avatar'
             ) {
                 console.log('[Editor] Baking viewport edits using react-native-view-shot...')
                 // Wait briefly for UI layout to settle
@@ -667,38 +662,28 @@ export default function EditorScreen() {
                 >
                     {/* Background Swapped Cutout Overlay */}
                     {isBgRemoved ? (
-                        <View style={{ width: SW, height: VIEWPORT_H, alignItems: 'center', justifyContent: 'center' }}>
-                            <View style={{
-                                width: SW * 0.75,
-                                height: VIEWPORT_H * 0.85,
-                                borderRadius: 20,
-                                overflow: 'hidden',
-                                borderWidth: 3,
-                                borderColor: '#d4af37', // Luxury Gold border
-                                shadowColor: '#d4af37',
-                                shadowOffset: { width: 0, height: 6 },
-                                shadowOpacity: 0.5,
-                                shadowRadius: 12,
-                                elevation: 8,
-                                backgroundColor: '#1a1a1a',
-                            }}>
-                                {mediaType === 'video' && Video ? (
-                                    <Video
-                                        source={{ uri: currentMediaUrl }}
-                                        style={{ width: '100%', height: '100%' }}
-                                        resizeMode={ResizeMode.CONTAIN}
-                                        shouldPlay={isVideoPlaying}
-                                        isLooping
-                                        isMuted
-                                    />
-                                ) : (
-                                    <Image 
-                                        source={{ uri: currentMediaUrl }} 
-                                        style={{ width: '100%', height: '100%' }} 
-                                        resizeMode="cover"
-                                    />
-                                )}
-                            </View>
+                        <View style={{ width: SW, height: VIEWPORT_H }}>
+                            {mediaType === 'video' && Video ? (
+                                <Video
+                                    source={{ uri: currentMediaUrl }}
+                                    style={{ width: '100%', height: '100%', opacity: 0.72 }}
+                                    resizeMode={ResizeMode.CONTAIN}
+                                    shouldPlay={isVideoPlaying}
+                                    isLooping
+                                    isMuted
+                                />
+                            ) : (
+                                <Image 
+                                    source={{ uri: currentMediaUrl }} 
+                                    style={{ width: '100%', height: '100%', opacity: 0.72 }} 
+                                    resizeMode="contain"
+                                />
+                            )}
+                            {/* Soft blending vignette */}
+                            <LinearGradient
+                                colors={['transparent', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.45)']}
+                                style={StyleSheet.absoluteFillObject}
+                            />
                         </View>
                     ) : (
                         <View style={{ width: SW, height: VIEWPORT_H }}>
@@ -817,6 +802,14 @@ export default function EditorScreen() {
                             {selectedFx === 'grain' && (
                                 <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.06)' }]} />
                             )}
+                            {selectedFx === 'light_leak' && (
+                                <LinearGradient
+                                    colors={['rgba(239,68,68,0.22)', 'rgba(245,158,11,0.18)', 'transparent']}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={StyleSheet.absoluteFillObject}
+                                />
+                            )}
 
                             {/* AI Object Eraser Content-Aware Healed Patches */}
                             {isObjectErased && healedPoints.map((pt: any, idx) => {
@@ -831,16 +824,29 @@ export default function EditorScreen() {
                                             width: size,
                                             height: size,
                                             borderRadius: size / 2,
-                                            backgroundColor: 'rgba(150, 150, 150, 0.92)',
-                                            borderWidth: 1.5,
-                                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                                            overflow: 'hidden',
+                                            borderWidth: 0.5,
+                                            borderColor: 'rgba(255, 255, 255, 0.3)',
                                             shadowColor: '#000',
-                                            shadowOpacity: 0.2,
-                                            shadowRadius: 4,
-                                            elevation: 5,
+                                            shadowOpacity: 0.15,
+                                            shadowRadius: 3,
+                                            elevation: 4,
                                             zIndex: 15
                                         }}
-                                    />
+                                    >
+                                        <Image
+                                            source={{ uri: currentMediaUrl }}
+                                            style={{
+                                                position: 'absolute',
+                                                left: -pt.x + size / 2,
+                                                top: -pt.y + size / 2,
+                                                width: SW,
+                                                height: VIEWPORT_H,
+                                            }}
+                                            resizeMode="contain"
+                                            blurRadius={15}
+                                        />
+                                    </View>
                                 )
                             })}
                         </View>
@@ -935,14 +941,14 @@ export default function EditorScreen() {
                             <View style={[StyleSheet.absoluteFillObject, { padding: 24, justifyContent: 'space-between', borderWidth: 12, borderColor: '#fff' }]}>
                                 {/* Top magazine title */}
                                 <View style={{ alignItems: 'center', marginTop: 8 }}>
-                                    <Text style={{ color: '#fff', fontSize: 44, fontWeight: '900', letterSpacing: 4 }}>NOVAGLOW</Text>
-                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 3, marginTop: -4 }}>CREATIVE STUDIO</Text>
+                                    <Text style={{ color: '#fff', fontSize: 44, fontWeight: '900', letterSpacing: 4, textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 }}>NOVAGLOW</Text>
+                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 3, marginTop: -4, textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }}>CREATIVE STUDIO</Text>
                                 </View>
                                 {/* Bottom subtitle & barcode */}
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                                     <View style={{ flex: 1, gap: 2 }}>
-                                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900', textTransform: 'uppercase' }}>{storyTitleText || 'NOVAGLOW CREATIVE'}</Text>
-                                        <Text style={{ color: '#fff', fontSize: 8, fontWeight: '600', opacity: 0.8 }}>EXCLUSIVE CREATION ISSUE · 2026</Text>
+                                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900', textTransform: 'uppercase', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 4 }}>{storyTitleText || 'NOVAGLOW CREATIVE'}</Text>
+                                        <Text style={{ color: '#fff', fontSize: 8, fontWeight: '600', opacity: 0.8, textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>EXCLUSIVE CREATION ISSUE · 2026</Text>
                                     </View>
                                     {/* Simulated Barcode */}
                                     <View style={{ backgroundColor: '#fff', padding: 4, borderRadius: 2, flexDirection: 'row', gap: 1.5, height: 28, alignItems: 'center' }}>
@@ -1006,9 +1012,96 @@ export default function EditorScreen() {
                     </View>
                 )}
 
+                {/* 8. AI Avatar Stylization Overlay */}
+                {activeTab === 'avatar' && avatarImageUrl === 'generated' && (
+                    <View style={[StyleSheet.absoluteFillObject, { zIndex: 20, pointerEvents: 'none' }]}>
+                        {/* Cyberpunk Style Overlay */}
+                        {selectedAvatarStyle === 'avatar-cyber' && (
+                            <View style={StyleSheet.absoluteFillObject}>
+                                <LinearGradient
+                                    colors={['rgba(217,70,239,0.25)', 'rgba(6,182,212,0.25)']}
+                                    style={StyleSheet.absoluteFillObject}
+                                />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 4, borderColor: 'rgba(6,182,212,0.6)', margin: 10 }]} />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 1.5, borderColor: 'rgba(217,70,239,0.6)', margin: 14 }]} />
+                                <View style={{ position: 'absolute', top: 20, right: 20, padding: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 6, borderWidth: 1, borderColor: '#06b6d4' }}>
+                                    <Text style={{ color: '#06b6d4', fontSize: 8, fontFamily: 'monospace', fontWeight: '900' }}>SYS.SCAN // 2099</Text>
+                                </View>
+                            </View>
+                        )}
 
+                        {/* Anime Chibi Style Overlay */}
+                        {selectedAvatarStyle === 'avatar-anime' && (
+                            <View style={StyleSheet.absoluteFillObject}>
+                                <LinearGradient
+                                    colors={['rgba(255,255,255,0.3)', 'transparent']}
+                                    style={StyleSheet.absoluteFillObject}
+                                />
+                                <View style={{
+                                    position: 'absolute',
+                                    top: VIEWPORT_H * 0.53,
+                                    left: SW * 0.30,
+                                    width: 32,
+                                    height: 18,
+                                    borderRadius: 999,
+                                    backgroundColor: 'rgba(244,63,94,0.35)',
+                                    shadowColor: '#f43f5e',
+                                    shadowRadius: 10,
+                                    shadowOpacity: 0.6
+                                }} />
+                                <View style={{
+                                    position: 'absolute',
+                                    top: VIEWPORT_H * 0.53,
+                                    left: SW * 0.58,
+                                    width: 32,
+                                    height: 18,
+                                    borderRadius: 999,
+                                    backgroundColor: 'rgba(244,63,94,0.35)',
+                                    shadowColor: '#f43f5e',
+                                    shadowRadius: 10,
+                                    shadowOpacity: 0.6
+                                }} />
+                                <View style={{ position: 'absolute', top: 60, left: 60 }}>
+                                    <Ionicons name="sparkles" size={24} color="#fef08a" style={{ opacity: 0.8 }} />
+                                </View>
+                                <View style={{ position: 'absolute', bottom: 120, right: 60 }}>
+                                    <Ionicons name="sparkles" size={20} color="#fef08a" style={{ opacity: 0.8 }} />
+                                </View>
+                            </View>
+                        )}
 
+                        {/* Corporate CEO Style Overlay */}
+                        {selectedAvatarStyle === 'avatar-corporate' && (
+                            <View style={StyleSheet.absoluteFillObject}>
+                                <LinearGradient
+                                    colors={['rgba(255,255,255,0.22)', 'rgba(0,0,0,0.35)']}
+                                    style={StyleSheet.absoluteFillObject}
+                                />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 8, borderColor: '#0f172a' }]} />
+                                <View style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center' }}>
+                                    <View style={{ backgroundColor: 'rgba(15,23,42,0.8)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+                                        <Text style={{ color: '#cbd5e1', fontSize: 9, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' }}>STUDIO EXECUTIVE PORTRAIT</Text>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
 
+                        {/* Oil Painting Style Overlay */}
+                        {selectedAvatarStyle === 'avatar-painting' && (
+                            <View style={StyleSheet.absoluteFillObject}>
+                                <LinearGradient
+                                    colors={['rgba(217,119,6,0.15)', 'rgba(120,53,4,0.25)']}
+                                    style={StyleSheet.absoluteFillObject}
+                                />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 14, borderColor: '#1c1917' }]} />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 1, borderColor: '#d97706', margin: 14 }]} />
+                                <View style={{ position: 'absolute', bottom: 30, alignSelf: 'center', backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#b45309', paddingHorizontal: 10, paddingVertical: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 }}>
+                                    <Text style={{ color: '#78350f', fontSize: 8, fontWeight: '800', letterSpacing: 1 }}>MUSEUM COLLECTION</Text>
+                                </View>
+                            </View>
+                        )}
+                    </View>
+                )}
                 
                 </View>
                 
