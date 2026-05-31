@@ -226,13 +226,8 @@ function RootLayout() {
     // Configure RevenueCat once at startup, before any user is known
     configureRevenueCat()
 
-    // 1. Check local guest session first for offline / demo mode
-    AsyncStorage.getItem('novaglow_local_session').then((val) => {
-      if (val === 'true') {
-        console.log('[Auth] Restored persistent guest session.')
-        setIsAuthed(true)
-        setOnboardingCompleted(true)
-      } else {
+    // Clear local guest session on fresh startup to always display landing/splash page first
+    AsyncStorage.removeItem('novaglow_local_session').then(() => {
         if (!isSupabaseEnabled) {
           // No credentials — stay on landing page, no errors thrown
           setIsAuthed(false)
@@ -255,7 +250,6 @@ function RootLayout() {
           console.warn('[Auth] Could not reach Supabase — defaulting to signed-out state.')
           setIsAuthed(false)
         })
-      }
     }).catch(() => {
       setIsAuthed(false)
     })

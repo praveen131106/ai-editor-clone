@@ -27,36 +27,38 @@ async function ensureMediaDir(): Promise<void> {
     }
 }
 
-/**
- * Copy a picked file to stable app storage.
- * Returns the new stable URI.
- */
-export async function copyToAppStorage(sourceUri: string): Promise<string> {
+export async function copyToAppStorage(sourceUri: string, isVideo = false): Promise<string> {
     await ensureMediaDir()
+ 
+    // Determine a valid extension
+    let extension = sourceUri.split('.').pop()?.split('?')[0] || 'jpg'
+    if (isVideo) {
+        extension = 'mp4'
+    } else if (extension.length > 4 || extension.includes('/') || extension.includes(':')) {
+        extension = 'jpg'
+    }
 
-    // Generate a unique filename
-    const extension = sourceUri.split('.').pop()?.split('?')[0] || 'jpg'
     const filename = `novaglow_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`
     const destUri = `${MEDIA_DIR}${filename}`
-
+ 
     console.log('[MediaUtils] Copying file:')
     console.log('[MediaUtils]   FROM:', sourceUri)
     console.log('[MediaUtils]   TO:', destUri)
-
+ 
     try {
         await FileSystem.copyAsync({
             from: sourceUri,
             to: destUri,
         })
-
+ 
         // Verify the copy worked
         const info = await FileSystem.getInfoAsync(destUri)
         console.log('[MediaUtils] Copy result:', JSON.stringify(info))
-
+ 
         if (!info.exists) {
             throw new Error('File copy succeeded but file does not exist at destination')
         }
-
+ 
         return destUri
     } catch (error) {
         console.error('[MediaUtils] Copy failed:', error)

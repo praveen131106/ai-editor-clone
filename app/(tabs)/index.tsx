@@ -119,7 +119,7 @@ export default function HomeScreen() {
 
         try {
             // Copy to stable app storage
-            const stableUri = await copyToAppStorage(uri)
+            const stableUri = await copyToAppStorage(uri, mediaType === 'video')
             console.log('[Home] Stable URI:', stableUri)
 
             // Validate the copied file
@@ -187,7 +187,7 @@ export default function HomeScreen() {
 
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: selectedMediaType === 'image' ? ['images'] : ['videos'],
-            allowsEditing: true,
+            allowsEditing: selectedMediaType === 'image',
             aspect: [9, 16],
             quality: 1,
         })

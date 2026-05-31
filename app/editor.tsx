@@ -199,7 +199,7 @@ export default function EditorScreen() {
                         }
                         const result = await ImagePicker.launchImageLibraryAsync({
                             mediaTypes: mediaType === 'video' ? ImagePicker.MediaTypeOptions.Videos : ImagePicker.MediaTypeOptions.Images,
-                            allowsEditing: true,
+                            allowsEditing: mediaType === 'image',
                             aspect: [9, 16],
                             quality: 1,
                         })
@@ -208,7 +208,7 @@ export default function EditorScreen() {
                             console.log('[Editor] Gallery picked URI:', pickedUri)
                             
                             // Copy to app storage
-                            const stableUri = await copyToAppStorage(pickedUri)
+                            const stableUri = await copyToAppStorage(pickedUri, mediaType === 'video')
                             const validation = await validateFileUri(stableUri)
                             
                             if (validation.exists) {
@@ -604,8 +604,12 @@ export default function EditorScreen() {
                         setEraserPoints((prev) => [...prev, { x: locationX, y: locationY, size: eraserBrushSize }])
                     }}
                 >
-                {/* 1. Base Layer (Original Image / Video representation) */}
-                <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                    <View 
+                        pointerEvents={activeTab === 'eraser' ? 'none' : 'auto'}
+                        style={StyleSheet.absoluteFillObject}
+                    >
+                    {/* 1. Base Layer (Original Image / Video representation) */}
+                    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
                     {mediaType === 'video' && Video ? (
                         <Video
                             source={{ uri: currentMediaUrl }}
@@ -1103,6 +1107,7 @@ export default function EditorScreen() {
                     </View>
                 )}
                 
+                </View>
                 </View>
                 
                 {/* Aspect Ratio Badge Overlay */}
