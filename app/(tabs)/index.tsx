@@ -308,17 +308,16 @@ export default function HomeScreen() {
                     <Text style={s.gridDesc}>Retouch & Hair</Text>
                 </Pressable>
 
-                <Pressable
-                    onPress={() => openToolPicker('video', 'trimmer')}
-                    style={({ pressed }) => [s.gridItem, pressed && s.gridItemPressed]}
+                <View
+                    style={[s.gridItem, { opacity: 0.4 }]}
                 >
                     <LinearGradient colors={['rgba(6,182,212,0.15)', 'transparent']} style={s.gridGrad} />
                     <View style={[s.iconBg, { backgroundColor: 'rgba(6,182,212,0.1)' }]}>
                         <Ionicons name="videocam-outline" size={24} color="#06b6d4" />
                     </View>
                     <Text style={s.gridTitle}>AI Video</Text>
-                    <Text style={s.gridDesc}>Trimmer & FX</Text>
-                </Pressable>
+                    <Text style={[s.gridDesc, { color: '#fbbf24' }]}>Coming Soon</Text>
+                </View>
             </View>
 
             <View style={s.gridRow}>
