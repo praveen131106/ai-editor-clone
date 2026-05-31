@@ -3,7 +3,7 @@ import { DeviceEventEmitter } from 'react-native'
 import { notificationItems as defaultNotifications, type NotificationItem } from './mockData'
 
 /**
- * 🔔 Lumi AI Notification Manager.
+ * 🔔 NovaGlow AI Notification Manager.
  *
  * Persists local alerts to AsyncStorage so they dynamically populate the Activity/Notifications tab
  * and integrates with the app context for real-time dispatch alerts.
@@ -25,7 +25,7 @@ export async function triggerLocalNotification(title: string, body: string): Pro
     console.log(`[Notifications] Dispatched alert: "${title}" — ${body}`)
     
     try {
-        const stored = await AsyncStorage.getItem('lumi_notifications')
+        const stored = await AsyncStorage.getItem('novaglow_notifications')
         let notifications: NotificationItem[] = stored ? JSON.parse(stored) : defaultNotifications
         
         const newNotif: NotificationItem = {
@@ -39,10 +39,10 @@ export async function triggerLocalNotification(title: string, body: string): Pro
         
         // Prepended to notifications list
         notifications = [newNotif, ...notifications]
-        await AsyncStorage.setItem('lumi_notifications', JSON.stringify(notifications))
+        await AsyncStorage.setItem('novaglow_notifications', JSON.stringify(notifications))
         
         // Dispatch native event safely on all platforms
-        DeviceEventEmitter.emit('lumi_new_notification', newNotif)
+        DeviceEventEmitter.emit('novaglow_new_notification', newNotif)
     } catch (err) {
         console.error('[Notifications] Failed to save local alert:', err)
     }

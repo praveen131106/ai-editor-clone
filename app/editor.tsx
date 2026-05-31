@@ -3,17 +3,21 @@ import {
     View,
     StyleSheet,
     Pressable,
-    Image,
     ScrollView,
     Dimensions,
     ActivityIndicator,
-    TextInput
+    TextInput,
+    Alert,
+    Image
 } from 'react-native'
-import { router, useLocalSearchParams } from 'expo-router'
+import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as ImagePicker from 'expo-image-picker'
 import { LinearGradient } from 'expo-linear-gradient'
+import { BlurView } from 'expo-blur'
+import { captureRef } from 'react-native-view-shot'
 let Audio: any = null
 let Video: any = null
 let ResizeMode: any = { CONTAIN: 'contain' }
@@ -53,6 +57,8 @@ import {
     type AIStyleFilter
 } from '@/lib/mockData'
 import { removeBackgroundAPI, smartHealingAPI, aiGenerateBackdropAPI } from '@/lib/api'
+import { useMedia } from '@/contexts/MediaContext'
+import { copyToAppStorage, validateFileUri } from '@/lib/mediaUtils'
 
 const { width: SW, height: SH } = Dimensions.get('window')
 const VIEWPORT_H = SH * 0.46
@@ -62,39 +68,45 @@ type ActiveTab = 'retouch' | 'background' | 'video' | 'filters' | 'audio' | 'era
 export default function EditorScreen() {
     const insets = useSafeAreaInsets()
     
-    // Router params
-    const params = useLocalSearchParams<{
-        mediaType: 'image' | 'video'
-        mediaUrl: string
-        filterId?: string
-        projectId?: string
-        initialTool?: string
-    }>()
+    // Read media from global context (NOT from router params)
+    const { media, setMedia } = useMedia()
 
-    const mediaType = params.mediaType || 'image'
-    const mediaUrl = params.mediaUrl || STOCK_PORTRAITS[0].url
-    const initialFilterId = params.filterId || ''
+    const mediaType = media?.type || 'image'
+    const mediaUrl = media?.uri || STOCK_PORTRAITS[0].url
+    const initialFilterId = media?.filterId || ''
+    
+    // Local media state for instantaneous camera & gallery pickers
+    const [mediaUrlState, setMediaUrlState] = useState<string>(mediaUrl)
+
+    // Sync from context when it changes
+    useEffect(() => {
+        if (media?.uri) {
+            console.log('[Editor] Media from context:', media.uri)
+            console.log('[Editor] Media type:', media.type, 'size:', media.fileSize, 'w:', media.width, 'h:', media.height)
+            setMediaUrlState(media.uri)
+        }
+    }, [media?.uri])
     
     // Map entry point parameters safely to ActiveTab keys
     const initialTool = useMemo<ActiveTab>(() => {
-        const raw = params.initialTool || 'retouch'
+        const raw = media?.initialTool || 'retouch'
         if (raw === 'beauty') return 'retouch'
         if (raw === 'bg_swap') return 'background'
         if (raw === 'trimmer') return 'video'
         return (raw as ActiveTab)
-    }, [params.initialTool])
+    }, [media?.initialTool])
 
     // Editor State
     const [activeTab, setActiveTab] = useState<ActiveTab>(initialTool)
     const [isSaving, setIsSaving] = useState(false)
+    const viewportRef = useRef<View>(null)
     
-    // Before/After comparison slider (0 to 1)
-    const [compareSplit, setCompareSplit] = useState(0.5)
-    const [showCompare, setShowCompare] = useState(true)
+    const [showCompare, setShowCompare] = useState(false)
 
     // A. Object Eraser Parameters
     const [eraserBrushSize, setEraserBrushSize] = useState(30)
-    const [eraserPoints, setEraserPoints] = useState<{ x: number; y: number }[]>([])
+    const [eraserPoints, setEraserPoints] = useState<{ x: number; y: number; size?: number }[]>([])
+    const [healedPoints, setHealedPoints] = useState<{ x: number; y: number; size?: number }[]>([])
     const [isErasingSimulated, setIsErasingSimulated] = useState(false)
     const [healingProgress, setHealingProgress] = useState(0)
     const [isObjectErased, setIsObjectErased] = useState(false)
@@ -108,14 +120,15 @@ export default function EditorScreen() {
 
     // C. AI Story Parameters
     const [selectedStoryLayout, setSelectedStoryLayout] = useState<'magazine' | 'retro' | 'neon' | 'influencer'>('magazine')
-    const [storyTitleText, setStoryTitleText] = useState('LUMI CREATIVE')
+    const [storyTitleText, setStoryTitleText] = useState('NOVAGLOW CREATIVE')
     const [storyTextSize, setStoryTextSize] = useState(32)
     const [storyTextColor, setStoryTextColor] = useState('#ffffff')
 
     const currentMediaUrl = useMemo(() => {
         if (activeTab === 'avatar' && avatarImageUrl) return avatarImageUrl
-        return mediaUrl
-    }, [activeTab, avatarImageUrl, mediaUrl])
+        return mediaUrlState
+    }, [activeTab, avatarImageUrl, mediaUrlState])
+
 
     // 1. AI Beauty Parameters
     const [smoothing, setSmoothing] = useState(60)
@@ -123,6 +136,103 @@ export default function EditorScreen() {
     const [lipColor, setLipColor] = useState('#ff007f') // Default magenta pink
     const [eyeSize, setEyeSize] = useState(1.05) // Widen scale factor (1.0 to 1.20)
     const [faceSlim, setFaceSlim] = useState(0) // face slimming intensity (0 to 100)
+    const [brightness, setBrightness] = useState(50)
+    const [contrast, setContrast] = useState(50)
+    const [saturation, setSaturation] = useState(50)
+    const [sharpness, setSharpness] = useState(0)
+    const [warmth, setWarmth] = useState(50)
+
+    const changeMediaAction = async () => {
+        Alert.alert(
+            'Change Creative Asset',
+            'Take a new photo/video or upload from camera roll:',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Take a Photo/Video',
+                    onPress: async () => {
+                        const permission = await ImagePicker.requestCameraPermissionsAsync()
+                        if (!permission.granted) {
+                            Alert.alert('Permission Denied', 'Camera access is required.')
+                            return
+                        }
+                        const result = await ImagePicker.launchCameraAsync({
+                            mediaTypes: mediaType === 'video' ? ImagePicker.MediaTypeOptions.Videos : ImagePicker.MediaTypeOptions.Images,
+                            allowsEditing: true,
+                            aspect: [9, 16],
+                            quality: 1,
+                        })
+                        if (!result.canceled && result.assets && result.assets.length > 0) {
+                            const pickedUri = result.assets[0].uri
+                            console.log('[Editor] Camera picked URI:', pickedUri)
+                            
+                            // Copy to app storage
+                            const stableUri = await copyToAppStorage(pickedUri)
+                            const validation = await validateFileUri(stableUri)
+                            
+                            if (validation.exists) {
+                                setMediaUrlState(stableUri)
+                                setMedia({
+                                    uri: stableUri,
+                                    originalUri: pickedUri,
+                                    type: mediaType,
+                                    fileSize: validation.size,
+                                    width: result.assets[0].width || 0,
+                                    height: result.assets[0].height || 0,
+                                    initialTool: activeTab,
+                                    filterId: initialFilterId,
+                                    projectId: '',
+                                })
+                            } else {
+                                Alert.alert('Error', 'Failed to save captured photo to storage.')
+                            }
+                        }
+                    }
+                },
+                {
+                    text: 'Choose from Camera Roll',
+                    onPress: async () => {
+                        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+                        if (!permission.granted) {
+                            Alert.alert('Permission Denied', 'Media library access is required.')
+                            return
+                        }
+                        const result = await ImagePicker.launchImageLibraryAsync({
+                            mediaTypes: mediaType === 'video' ? ImagePicker.MediaTypeOptions.Videos : ImagePicker.MediaTypeOptions.Images,
+                            allowsEditing: true,
+                            aspect: [9, 16],
+                            quality: 1,
+                        })
+                        if (!result.canceled && result.assets && result.assets.length > 0) {
+                            const pickedUri = result.assets[0].uri
+                            console.log('[Editor] Gallery picked URI:', pickedUri)
+                            
+                            // Copy to app storage
+                            const stableUri = await copyToAppStorage(pickedUri)
+                            const validation = await validateFileUri(stableUri)
+                            
+                            if (validation.exists) {
+                                setMediaUrlState(stableUri)
+                                setMedia({
+                                    uri: stableUri,
+                                    originalUri: pickedUri,
+                                    type: mediaType,
+                                    fileSize: validation.size,
+                                    width: result.assets[0].width || 0,
+                                    height: result.assets[0].height || 0,
+                                    initialTool: activeTab,
+                                    filterId: initialFilterId,
+                                    projectId: '',
+                                })
+                            } else {
+                                Alert.alert('Error', 'Failed to save picked image to storage.')
+                            }
+                        }
+                    }
+                }
+            ]
+        )
+    }
 
     // 2. Background Removal & Replacement
     const [isBgRemoved, setIsBgRemoved] = useState(false)
@@ -152,15 +262,15 @@ export default function EditorScreen() {
 
     // Detect if model is standard stock to render high-fidelity mask cutout
     const stockModel = useMemo(() => {
-        const matchingPortrait = STOCK_PORTRAITS.find(p => p.url === mediaUrl)
+        const matchingPortrait = STOCK_PORTRAITS.find(p => p.url === mediaUrlState)
         if (matchingPortrait) return matchingPortrait.id
         
         // Check if mediaUrl matches a stock video
-        const matchingVideo = STOCK_VIDEOS.find(v => v.url === mediaUrl)
+        const matchingVideo = STOCK_VIDEOS.find(v => v.url === mediaUrlState)
         if (matchingVideo) return matchingVideo.id
         
         return null
-    }, [mediaUrl])
+    }, [mediaUrlState])
 
     // Load filter preset details when filter is clicked
     const applyFilterPreset = (filter: AIStyleFilter) => {
@@ -170,6 +280,72 @@ export default function EditorScreen() {
         setLipColor(filter.lipColor)
         setEyeSize(filter.eyeSize)
         setSelectedFx(filter.overlayStyle)
+
+        // Custom preset curves
+        if (filter.id === 'filter-glamx') {
+            // NovaGlow Signature
+            setBrightness(60)
+            setContrast(62)
+            setSaturation(70)
+            setSharpness(70)
+            setWarmth(55)
+        } else if (filter.id === 'filter-golden') {
+            // Golden Hour
+            setBrightness(58)
+            setContrast(52)
+            setSaturation(65)
+            setSharpness(45)
+            setWarmth(78)
+        } else if (filter.id === 'filter-soft') {
+            // Soft Beauty
+            setBrightness(65)
+            setContrast(48)
+            setSaturation(52)
+            setSharpness(10)
+            setWarmth(52)
+        } else if (filter.id === 'filter-luxury') {
+            // Luxury Portrait
+            setBrightness(48)
+            setContrast(72)
+            setSaturation(40)
+            setSharpness(85)
+            setWarmth(48)
+        } else if (filter.id === 'filter-studio') {
+            // Studio Light
+            setBrightness(72)
+            setContrast(55)
+            setSaturation(50)
+            setSharpness(60)
+            setWarmth(50)
+        } else if (filter.id === 'filter-natural') {
+            // Natural Glow
+            setBrightness(60)
+            setContrast(52)
+            setSaturation(54)
+            setSharpness(30)
+            setWarmth(55)
+        } else if (filter.id === 'filter-model') {
+            // Fashion Model
+            setBrightness(52)
+            setContrast(68)
+            setSaturation(45)
+            setSharpness(80)
+            setWarmth(44)
+        } else if (filter.id === 'filter-influencer') {
+            // Influencer
+            setBrightness(62)
+            setContrast(54)
+            setSaturation(60)
+            setSharpness(50)
+            setWarmth(58)
+        } else {
+            // Fallback
+            setBrightness(60)
+            setContrast(52)
+            setSaturation(54)
+            setSharpness(30)
+            setWarmth(55)
+        }
     }
 
     // Audio integration logic
@@ -212,7 +388,8 @@ export default function EditorScreen() {
         }, 150)
 
         try {
-            await smartHealingAPI(mediaUrl, eraserPoints)
+            setHealedPoints((prev) => [...prev, ...eraserPoints])
+            await smartHealingAPI(mediaUrlState, eraserPoints)
             setIsObjectErased(true)
         } catch (err) {
             console.error('[API] smartHealingAPI error:', err)
@@ -227,7 +404,7 @@ export default function EditorScreen() {
         if (!isBgRemoved) {
             setIsRemovingBg(true)
             try {
-                await removeBackgroundAPI(mediaUrl)
+                await removeBackgroundAPI(mediaUrlState)
                 setIsBgRemoved(true)
             } catch (err) {
                 console.error('[API] removeBackgroundAPI error:', err)
@@ -303,34 +480,77 @@ export default function EditorScreen() {
     }
 
     // Direct routing to export flow
-    const navigateToExport = () => {
-        // Collect current edits summary
-        let editsSummary = `Smooth: ${smoothing}%, Glow: ${glow}%, Tint: ${lipColor}, FX: ${selectedFx}`
-        if (isBgRemoved) {
-            editsSummary = 'Removed backdrop, swapped background'
-        } else if (activeTab === 'eraser' && isObjectErased) {
-            editsSummary = 'Erased object from image using AI Smart Healing'
-        } else if (activeTab === 'avatar' && avatarImageUrl) {
-            editsSummary = `Generated AI Avatar in ${selectedAvatarStyle} style`
-        } else if (activeTab === 'story') {
-            editsSummary = `Created AI Story with template ${selectedStoryLayout} layout`
-        }
-
-        router.push({
-            pathname: '/export',
-            params: {
-                mediaType,
-                mediaUrl: (activeTab === 'avatar' && avatarImageUrl) ? avatarImageUrl : mediaUrl,
-                editsSummary,
-                smoothing,
-                glow,
-                lipColor,
-                eyeSize,
-                selectedFx,
-                selectedBackdrop,
-                isBgRemoved: isBgRemoved.toString()
+    const navigateToExport = async () => {
+        setIsSaving(true)
+        try {
+            let finalUri = (activeTab === 'avatar' && avatarImageUrl) ? avatarImageUrl : mediaUrlState
+            
+            // If the user has made ANY changes, let's capture the view ref directly to bake all edits!
+            if (
+                smoothing > 0 || glow > 0 || lipColor || warmth !== 50 || 
+                brightness !== 50 || contrast !== 50 || saturation !== 50 || sharpness > 0 || 
+                isBgRemoved || isObjectErased || activeTab === 'story'
+            ) {
+                console.log('[Editor] Baking viewport edits using react-native-view-shot...')
+                // Wait briefly for UI layout to settle
+                await new Promise((resolve) => setTimeout(resolve, 150))
+                
+                const captured = await captureRef(viewportRef, {
+                    format: 'jpg',
+                    quality: 0.95,
+                    result: 'tmpfile'
+                })
+                
+                if (captured) {
+                    console.log('[Editor] Successfully baked edits into stable path:', captured)
+                    finalUri = captured
+                }
             }
-        })
+            
+            if (media) {
+                setMedia({
+                    ...media,
+                    uri: finalUri,
+                })
+            }
+            
+            let editsSummary = `Smooth: ${smoothing}%, Glow: ${glow}%, Tint: ${lipColor}, FX: ${selectedFx}`
+            if (isBgRemoved) {
+                editsSummary = 'Removed backdrop, swapped background'
+            } else if (activeTab === 'eraser' && isObjectErased) {
+                editsSummary = 'Erased object from image using AI Smart Healing'
+            } else if (activeTab === 'avatar' && avatarImageUrl) {
+                editsSummary = `Generated AI Avatar in ${selectedAvatarStyle} style`
+            } else if (activeTab === 'story') {
+                editsSummary = `Created AI Story with template ${selectedStoryLayout} layout`
+            }
+
+            router.push({
+                pathname: '/export',
+                params: {
+                    editsSummary,
+                    smoothing: smoothing.toString(),
+                    glow: glow.toString(),
+                    lipColor,
+                    eyeSize: eyeSize.toString(),
+                    selectedFx,
+                    selectedBackdrop,
+                    isBgRemoved: isBgRemoved.toString()
+                }
+            })
+        } catch (err) {
+            console.error('[Editor] Viewport capture failed, falling back:', err)
+            const finalUri = (activeTab === 'avatar' && avatarImageUrl) ? avatarImageUrl : mediaUrlState
+            if (media) {
+                setMedia({ ...media, uri: finalUri })
+            }
+            router.push({
+                pathname: '/export',
+                params: { editsSummary: 'Custom adjustments applied' }
+            })
+        } finally {
+            setIsSaving(false)
+        }
     }
 
     const bottomNavItems = useMemo(() => {
@@ -372,23 +592,25 @@ export default function EditorScreen() {
                 </Pressable>
             </View>
 
-            {/* Main Creative Viewport */}
-            <View 
-                style={s.viewportContainer}
-                onStartShouldSetResponder={() => activeTab === 'eraser'}
-                onResponderGrant={(evt) => {
-                    if (activeTab !== 'eraser' || isErasingSimulated) return
-                    const { locationX, locationY } = evt.nativeEvent
-                    setEraserPoints([{ x: locationX, y: locationY }])
-                }}
-                onResponderMove={(evt) => {
-                    if (activeTab !== 'eraser' || isErasingSimulated) return
-                    const { locationX, locationY } = evt.nativeEvent
-                    setEraserPoints((prev) => [...prev, { x: locationX, y: locationY }])
-                }}
-            >
+            {/* Main Creative Viewport Wrapper */}
+            <View style={{ width: SW, height: VIEWPORT_H, position: 'relative' }}>
+                <View 
+                    ref={viewportRef}
+                    style={s.viewportContainer}
+                    onStartShouldSetResponder={() => activeTab === 'eraser'}
+                    onResponderGrant={(evt) => {
+                        if (activeTab !== 'eraser' || isErasingSimulated) return
+                        const { locationX, locationY } = evt.nativeEvent
+                        setEraserPoints([{ x: locationX, y: locationY, size: eraserBrushSize }])
+                    }}
+                    onResponderMove={(evt) => {
+                        if (activeTab !== 'eraser' || isErasingSimulated) return
+                        const { locationX, locationY } = evt.nativeEvent
+                        setEraserPoints((prev) => [...prev, { x: locationX, y: locationY, size: eraserBrushSize }])
+                    }}
+                >
                 {/* 1. Base Layer (Original Image / Video representation) */}
-                <View style={StyleSheet.absoluteFill}>
+                <View pointerEvents="none" style={StyleSheet.absoluteFill}>
                     {mediaType === 'video' && Video ? (
                         <Video
                             source={{ uri: currentMediaUrl }}
@@ -400,7 +622,13 @@ export default function EditorScreen() {
                             volume={audioVolume / 100}
                         />
                     ) : (
-                        <Image source={{ uri: currentMediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                        <Image 
+                            
+                            source={{ uri: currentMediaUrl }} 
+                            style={s.viewportMedia} 
+                            resizeMode="contain"
+                            
+                            />
                     )}
                     {mediaType === 'video' && (
                         <Pressable 
@@ -414,26 +642,50 @@ export default function EditorScreen() {
 
                 {/* 2. Swapped Background Backdrop Layer (If background is removed) */}
                 {isBgRemoved && selectedBackdrop !== 'none' && (
-                    <View style={StyleSheet.absoluteFill}>
+                    <View 
+                        pointerEvents="none" 
+                        style={[
+                            StyleSheet.absoluteFillObject,
+                            { opacity: showCompare ? 0 : 1 }
+                        ]}
+                    >
                         <Image 
                             source={{ uri: selectedBackdrop.startsWith('http') ? selectedBackdrop : PRESET_BACKDROPS.find(b => b.id === selectedBackdrop)?.image }} 
-                            style={s.viewportMedia as any} 
+                            style={s.viewportMedia} 
                             resizeMode="contain" 
                         />
                     </View>
                 )}
 
-                {/* 3. AI Enhanced / Filtered Layer (Clipped to the slider split value) */}
-                <View style={[StyleSheet.absoluteFill, { width: SW * compareSplit, overflow: 'hidden' }]}>
+                {/* 3. AI Enhanced / Filtered Layer */}
+                <View 
+                    pointerEvents="none" 
+                    style={[
+                        StyleSheet.absoluteFillObject, 
+                        { opacity: showCompare ? 0 : 1, overflow: 'hidden' }
+                    ]}
+                >
                     {/* Background Swapped Cutout Overlay */}
                     {isBgRemoved ? (
-                        <View style={{ width: SW, height: VIEWPORT_H }}>
-                            {stockModel ? (
-                                // Flawless transparent stock mask overlay
-                                mediaType === 'video' && Video ? (
+                        <View style={{ width: SW, height: VIEWPORT_H, alignItems: 'center', justifyContent: 'center' }}>
+                            <View style={{
+                                width: SW * 0.75,
+                                height: VIEWPORT_H * 0.85,
+                                borderRadius: 20,
+                                overflow: 'hidden',
+                                borderWidth: 3,
+                                borderColor: '#d4af37', // Luxury Gold border
+                                shadowColor: '#d4af37',
+                                shadowOffset: { width: 0, height: 6 },
+                                shadowOpacity: 0.5,
+                                shadowRadius: 12,
+                                elevation: 8,
+                                backgroundColor: '#1a1a1a',
+                            }}>
+                                {mediaType === 'video' && Video ? (
                                     <Video
                                         source={{ uri: currentMediaUrl }}
-                                        style={[s.viewportMedia, { tintColor: selectedFx === 'neon' ? ACCENT : undefined } as any]}
+                                        style={{ width: '100%', height: '100%' }}
                                         resizeMode={ResizeMode.CONTAIN}
                                         shouldPlay={isVideoPlaying}
                                         isLooping
@@ -442,32 +694,18 @@ export default function EditorScreen() {
                                 ) : (
                                     <Image 
                                         source={{ uri: currentMediaUrl }} 
-                                        style={[s.viewportMedia as any, { tintColor: selectedFx === 'neon' ? ACCENT : undefined }]} 
-                                        resizeMode="contain" 
+                                        style={{ width: '100%', height: '100%' }} 
+                                        resizeMode="cover"
                                     />
-                                )
-                            ) : (
-                                // Smart edge mask fallback
-                                mediaType === 'video' && Video ? (
-                                    <Video
-                                        source={{ uri: currentMediaUrl }}
-                                        style={s.viewportMedia}
-                                        resizeMode={ResizeMode.CONTAIN}
-                                        shouldPlay={isVideoPlaying}
-                                        isLooping
-                                        isMuted
-                                    />
-                                ) : (
-                                    <Image source={{ uri: currentMediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
-                                )
-                            )}
+                                )}
+                            </View>
                         </View>
                     ) : (
                         <View style={{ width: SW, height: VIEWPORT_H }}>
                             {/* Standard original image displaying beauty filter tweaks (bilateral blur, lips red glow overlay) */}
                             {mediaType === 'video' && Video ? (
                                 <Video
-                                    source={{ uri: mediaUrl }}
+                                    source={{ uri: currentMediaUrl }}
                                     style={s.viewportMedia}
                                     resizeMode={ResizeMode.CONTAIN}
                                     shouldPlay={isVideoPlaying}
@@ -475,12 +713,98 @@ export default function EditorScreen() {
                                     isMuted
                                 />
                             ) : (
-                                <Image source={{ uri: mediaUrl }} style={s.viewportMedia as any} resizeMode="contain" />
+                                <Image  source={{ uri: currentMediaUrl }} style={s.viewportMedia} resizeMode="contain"  />
+                            )}
+
+                            {/* Bilateral Blur / Smooth Skin duplicate overlay */}
+                            {smoothing > 0 && (
+                                <Image 
+                                    source={{ uri: currentMediaUrl }} 
+                                    style={[StyleSheet.absoluteFillObject, { opacity: (smoothing / 100) * 0.85 }]} 
+                                    blurRadius={Math.max(1, Math.round((smoothing / 100) * 20))}
+                                    resizeMode="contain"
+                                />
+                            )}
+
+                            {/* Warmth Overlay (Orange/Amber for warm, Blue/Cyan for cool) */}
+                            {warmth !== 50 && (
+                                <View 
+                                    style={[
+                                        StyleSheet.absoluteFillObject, 
+                                        { 
+                                            backgroundColor: warmth > 50 ? '#f59e0b' : '#3b82f6', 
+                                            opacity: Math.max(0, Math.abs(warmth - 50) / 65)
+                                        }
+                                    ]} 
+                                />
+                            )}
+
+                            {/* Saturation Blending Overlay (Pink/Gray) */}
+                            {saturation !== 50 && (
+                                <View 
+                                    style={[
+                                        StyleSheet.absoluteFillObject, 
+                                        { 
+                                            backgroundColor: saturation > 50 ? '#ec4899' : '#1a1a1a', 
+                                            opacity: Math.max(0, Math.abs(saturation - 50) / 55)
+                                        }
+                                    ]} 
+                                />
+                            )}
+
+                            {/* Sharpness (Simulated Edge High-Contrast Overlay) */}
+                            {sharpness > 0 && (
+                                <View 
+                                    style={[
+                                        StyleSheet.absoluteFillObject, 
+                                        { 
+                                            backgroundColor: '#ffffff', 
+                                            opacity: (sharpness / 100) * 0.22,
+                                        }
+                                    ]} 
+                                />
+                            )}
+                            {sharpness > 0 && (
+                                <View 
+                                    style={[
+                                        StyleSheet.absoluteFillObject, 
+                                        { 
+                                            backgroundColor: '#000000', 
+                                            opacity: (sharpness / 100) * 0.16,
+                                        }
+                                    ]} 
+                                />
+                            )}
+
+                            {/* High-fidelity Contrast Overlay */}
+                            {contrast !== 50 && (
+                                <View 
+                                    style={[
+                                        StyleSheet.absoluteFillObject, 
+                                        { 
+                                            backgroundColor: contrast > 50 ? '#000000' : '#888888', 
+                                            opacity: contrast > 50 ? (contrast - 50) / 60 : (50 - contrast) / 60
+                                        }
+                                    ]} 
+                                />
+                            )}
+
+                            {/* Brightness Overlay (White/Black) */}
+                            {brightness !== 50 && (
+                                <View 
+                                    style={[
+                                        StyleSheet.absoluteFillObject, 
+                                        { 
+                                            backgroundColor: brightness > 50 ? '#ffffff' : '#000000', 
+                                            opacity: brightness > 50 ? (brightness - 50) / 55 : (50 - brightness) / 55 
+                                        }
+                                    ]} 
+                                />
                             )}
                             
                             {/* Lip Tint Overlay (Dynamic SVG-like absolute layer) */}
                             {lipColor && (
-                                <View style={[s.lipsOverlay, { backgroundColor: lipColor, opacity: 0.15 }]} />
+                                <View style={[s.lipsOverlay, { backgroundColor: lipColor, opacity: 0.35 }]} />
                             )}
 
                             {/* Retro Glitch/VHS FX Overlay */}
@@ -493,27 +817,56 @@ export default function EditorScreen() {
                             {selectedFx === 'grain' && (
                                 <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.06)' }]} />
                             )}
+
+                            {/* AI Object Eraser Content-Aware Healed Patches */}
+                            {isObjectErased && healedPoints.map((pt: any, idx) => {
+                                const size = pt.size || eraserBrushSize
+                                return (
+                                    <View
+                                        key={idx}
+                                        style={{
+                                            position: 'absolute',
+                                            left: pt.x - size / 2,
+                                            top: pt.y - size / 2,
+                                            width: size,
+                                            height: size,
+                                            borderRadius: size / 2,
+                                            backgroundColor: 'rgba(150, 150, 150, 0.92)',
+                                            borderWidth: 1.5,
+                                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                                            shadowColor: '#000',
+                                            shadowOpacity: 0.2,
+                                            shadowRadius: 4,
+                                            elevation: 5,
+                                            zIndex: 15
+                                        }}
+                                    />
+                                )
+                            })}
                         </View>
                     )}
                 </View>
 
                 {/* 4. Interactive Object Eraser Mask Overlay */}
-                {activeTab === 'eraser' && eraserPoints.map((pt, idx) => (
-                    <View
-                        key={idx}
-                        style={{
-                            position: 'absolute',
-                            left: pt.x - eraserBrushSize / 2,
-                            top: pt.y - eraserBrushSize / 2,
-                            width: eraserBrushSize,
-                            height: eraserBrushSize,
-                            borderRadius: eraserBrushSize / 2,
-                            backgroundColor: 'rgba(239, 68, 68, 0.45)', // Red brush trail
-                            pointerEvents: 'none',
-                            zIndex: 25
-                        }}
-                    />
-                ))}
+                {activeTab === 'eraser' && eraserPoints.map((pt: any, idx) => {
+                    const size = pt.size || eraserBrushSize
+                    return (
+                        <View
+                            key={idx}
+                            style={{
+                                position: 'absolute',
+                                left: pt.x - size / 2,
+                                top: pt.y - size / 2,
+                                width: size,
+                                height: size,
+                                borderRadius: size / 2,
+                                backgroundColor: 'rgba(239, 68, 68, 0.45)', // Red brush trail
+                                pointerEvents: 'none',
+                                zIndex: 25
+                            }}
+                        />
+                    )
+                })}
 
                 {/* 5. Object Eraser Smart Healing Progress Overlay */}
                 {activeTab === 'eraser' && isErasingSimulated && (
@@ -582,13 +935,13 @@ export default function EditorScreen() {
                             <View style={[StyleSheet.absoluteFillObject, { padding: 24, justifyContent: 'space-between', borderWidth: 12, borderColor: '#fff' }]}>
                                 {/* Top magazine title */}
                                 <View style={{ alignItems: 'center', marginTop: 8 }}>
-                                    <Text style={{ color: '#fff', fontSize: 44, fontWeight: '900', letterSpacing: 4 }}>LUMI</Text>
+                                    <Text style={{ color: '#fff', fontSize: 44, fontWeight: '900', letterSpacing: 4 }}>NOVAGLOW</Text>
                                     <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 3, marginTop: -4 }}>CREATIVE STUDIO</Text>
                                 </View>
                                 {/* Bottom subtitle & barcode */}
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                                     <View style={{ flex: 1, gap: 2 }}>
-                                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900', textTransform: 'uppercase' }}>{storyTitleText || 'LUMI CREATIVE'}</Text>
+                                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900', textTransform: 'uppercase' }}>{storyTitleText || 'NOVAGLOW CREATIVE'}</Text>
                                         <Text style={{ color: '#fff', fontSize: 8, fontWeight: '600', opacity: 0.8 }}>EXCLUSIVE CREATION ISSUE · 2026</Text>
                                     </View>
                                     {/* Simulated Barcode */}
@@ -642,7 +995,7 @@ export default function EditorScreen() {
                                         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: ACCENT }} />
                                         <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900', textTransform: 'uppercase' }}>VIRAL CREATOR</Text>
                                     </View>
-                                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>{storyTitleText || 'Lumi AI Story Headline'}</Text>
+                                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>{storyTitleText || 'NovaGlow AI Story Headline'}</Text>
                                     <View style={{ flexDirection: 'row', gap: 12, marginTop: 2, opacity: 0.8 }}>
                                         <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }}><Ionicons name="heart" size={10} color={ACCENT} /> 1.2M Likes</Text>
                                         <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }}><Ionicons name="chatbubble" size={10} color="#06b6d4" /> 4.2k Shares</Text>
@@ -653,38 +1006,35 @@ export default function EditorScreen() {
                     </View>
                 )}
 
-                {/* 8. Glowing Before/After Split Line Controller */}
-                {showCompare && activeTab !== 'story' && (
-                    <View style={[s.compareSplitLine, { left: SW * compareSplit }]}>
-                        <View style={s.compareSplitHandle}>
-                            <Ionicons name="swap-horizontal" size={16} color="#fff" />
-                        </View>
-                    </View>
-                )}
 
-                {/* Simulated interactive drag region for Before/After */}
-                {activeTab !== 'story' && activeTab !== 'eraser' && (
-                    <Pressable
-                        onStartShouldSetResponder={() => true}
-                        onMoveShouldSetResponder={() => true}
-                        onResponderGrant={(evt) => {
-                            const { locationX } = evt.nativeEvent
-                            const percentage = Math.max(0, Math.min(1, locationX / SW))
-                            setCompareSplit(percentage)
-                        }}
-                        onResponderMove={(evt) => {
-                            const { locationX } = evt.nativeEvent
-                            const percentage = Math.max(0, Math.min(1, locationX / SW))
-                            setCompareSplit(percentage)
-                        }}
-                        style={[StyleSheet.absoluteFillObject, { zIndex: 12 }]}
-                    />
-                )}
+
+
+                
+                </View>
                 
                 {/* Aspect Ratio Badge Overlay */}
                 <View style={s.aspectBadge}>
                     <Text style={s.aspectBadgeText}>{mediaType === 'image' ? 'PHOTO 9:16' : 'VIDEO 9:16'}</Text>
                 </View>
+
+                {/* Floating Compare press-and-hold button */}
+                {activeTab !== 'story' && activeTab !== 'eraser' && (
+                    <Pressable
+                        onPressIn={() => {
+                            setShowCompare(true)
+                        }}
+                        onPressOut={() => {
+                            setShowCompare(false)
+                        }}
+                        style={({ pressed }) => [
+                            s.floatingCompareBtn,
+                            pressed && { opacity: 0.8 }
+                        ]}
+                    >
+                        <Ionicons name="eye-outline" size={14} color="#fff" />
+                        <Text style={s.floatingCompareText}>Compare</Text>
+                    </Pressable>
+                )}
             </View>
 
             {/* Quick Filter Info strip */}
@@ -700,6 +1050,29 @@ export default function EditorScreen() {
                 {/* 1. Retouch Slider Controls */}
                 {activeTab === 'retouch' && (
                     <ScrollView contentContainerStyle={s.scrollControls}>
+                        {/* Premium Media Uploader Bar */}
+                        <Pressable
+                            onPress={changeMediaAction}
+                            style={({ pressed }) => [
+                                {
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    backgroundColor: SURFACE,
+                                    borderWidth: 1.5,
+                                    borderColor: ACCENT,
+                                    borderRadius: 12,
+                                    paddingVertical: 12,
+                                    gap: 8,
+                                    marginBottom: 6,
+                                    opacity: pressed ? 0.85 : 1
+                                }
+                            ]}
+                        >
+                            <Ionicons name="camera-outline" size={18} color={ACCENT} />
+                            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>Change/Upload Custom Photo</Text>
+                        </Pressable>
+
                         <View style={s.sliderRow}>
                             <View style={s.sliderLabelRow}>
                                 <Text style={s.sliderTitle}>Skin Smoothing</Text>
@@ -719,7 +1092,7 @@ export default function EditorScreen() {
 
                         <View style={s.sliderRow}>
                             <View style={s.sliderLabelRow}>
-                                <Text style={s.sliderTitle}>Lumi Glow</Text>
+                                <Text style={s.sliderTitle}>NovaGlow Glow</Text>
                                 <Text style={s.sliderVal}>{glow}%</Text>
                             </View>
                             <Slider
@@ -729,6 +1102,91 @@ export default function EditorScreen() {
                                 step={1}
                                 value={glow}
                                 onValueChange={setGlow}
+                                minimumTrackTintColor={ACCENT}
+                                maximumTrackTintColor={BORDER}
+                            />
+                        </View>
+
+                        <View style={s.sliderRow}>
+                            <View style={s.sliderLabelRow}>
+                                <Text style={s.sliderTitle}>Brightness</Text>
+                                <Text style={s.sliderVal}>{brightness}%</Text>
+                            </View>
+                            <Slider
+                                style={{ width: '100%', height: 36 }}
+                                minimumValue={0}
+                                maximumValue={100}
+                                step={1}
+                                value={brightness}
+                                onValueChange={setBrightness}
+                                minimumTrackTintColor={ACCENT}
+                                maximumTrackTintColor={BORDER}
+                            />
+                        </View>
+
+                        <View style={s.sliderRow}>
+                            <View style={s.sliderLabelRow}>
+                                <Text style={s.sliderTitle}>Contrast</Text>
+                                <Text style={s.sliderVal}>{contrast}%</Text>
+                            </View>
+                            <Slider
+                                style={{ width: '100%', height: 36 }}
+                                minimumValue={0}
+                                maximumValue={100}
+                                step={1}
+                                value={contrast}
+                                onValueChange={setContrast}
+                                minimumTrackTintColor={ACCENT}
+                                maximumTrackTintColor={BORDER}
+                            />
+                        </View>
+
+                        <View style={s.sliderRow}>
+                            <View style={s.sliderLabelRow}>
+                                <Text style={s.sliderTitle}>Saturation</Text>
+                                <Text style={s.sliderVal}>{saturation}%</Text>
+                            </View>
+                            <Slider
+                                style={{ width: '100%', height: 36 }}
+                                minimumValue={0}
+                                maximumValue={100}
+                                step={1}
+                                value={saturation}
+                                onValueChange={setSaturation}
+                                minimumTrackTintColor={ACCENT}
+                                maximumTrackTintColor={BORDER}
+                            />
+                        </View>
+
+                        <View style={s.sliderRow}>
+                            <View style={s.sliderLabelRow}>
+                                <Text style={s.sliderTitle}>Sharpness</Text>
+                                <Text style={s.sliderVal}>{sharpness}%</Text>
+                            </View>
+                            <Slider
+                                style={{ width: '100%', height: 36 }}
+                                minimumValue={0}
+                                maximumValue={100}
+                                step={1}
+                                value={sharpness}
+                                onValueChange={setSharpness}
+                                minimumTrackTintColor={ACCENT}
+                                maximumTrackTintColor={BORDER}
+                            />
+                        </View>
+
+                        <View style={s.sliderRow}>
+                            <View style={s.sliderLabelRow}>
+                                <Text style={s.sliderTitle}>Warmth</Text>
+                                <Text style={s.sliderVal}>{warmth}%</Text>
+                            </View>
+                            <Slider
+                                style={{ width: '100%', height: 36 }}
+                                minimumValue={0}
+                                maximumValue={100}
+                                step={1}
+                                value={warmth}
+                                onValueChange={setWarmth}
                                 minimumTrackTintColor={ACCENT}
                                 maximumTrackTintColor={BORDER}
                             />
@@ -774,38 +1232,42 @@ export default function EditorScreen() {
                             </Pressable>
                         </View>
 
-                        {isBgRemoved && (
-                            <View style={{ gap: 12, marginTop: 4 }}>
-                                <Text style={s.subSectionTitle}>Select Replacement Backdrop</Text>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.backdropRow}>
+                        <View style={{ gap: 12, marginTop: 4 }}>
+                            <Text style={s.subSectionTitle}>Select Replacement Backdrop</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.backdropRow}>
+                                <Pressable
+                                    onPress={() => {
+                                        setSelectedBackdrop('none')
+                                        setIsBgRemoved(false)
+                                    }}
+                                    style={[s.backdropCard, selectedBackdrop === 'none' && s.backdropCardActive]}
+                                >
+                                    <View style={[s.backdropThumb, { backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center' }]}>
+                                        <Ionicons name="ban-outline" size={20} color={TEXT_SECONDARY} />
+                                    </View>
+                                    <Text style={s.backdropName}>Original</Text>
+                                </Pressable>
+                                {PRESET_BACKDROPS.map((bg) => (
                                     <Pressable
-                                        onPress={() => setSelectedBackdrop('none')}
-                                        style={[s.backdropCard, selectedBackdrop === 'none' && s.backdropCardActive]}
+                                        key={bg.id}
+                                        onPress={() => {
+                                            setSelectedBackdrop(bg.id)
+                                            setIsBgRemoved(true)
+                                        }}
+                                        style={[s.backdropCard, selectedBackdrop === bg.id && s.backdropCardActive]}
                                     >
-                                        <View style={[s.backdropThumb, { backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center' }]}>
-                                            <Ionicons name="ban-outline" size={20} color={TEXT_SECONDARY} />
-                                        </View>
-                                        <Text style={s.backdropName}>Transparent</Text>
+                                        <Image source={{ uri: bg.thumbnail }} style={s.backdropThumb} resizeMode="cover" />
+                                        <Text style={s.backdropName} numberOfLines={1}>{bg.name}</Text>
                                     </Pressable>
-                                    {PRESET_BACKDROPS.map((bg) => (
-                                        <Pressable
-                                            key={bg.id}
-                                            onPress={() => setSelectedBackdrop(bg.id)}
-                                            style={[s.backdropCard, selectedBackdrop === bg.id && s.backdropCardActive]}
-                                        >
-                                            <Image source={{ uri: bg.thumbnail }} style={s.backdropThumb} />
-                                            <Text style={s.backdropName} numberOfLines={1}>{bg.name.split(' ')[0]}</Text>
-                                        </Pressable>
-                                    ))}
-                                </ScrollView>
-                            </View>
-                        )}
+                                ))}
+                            </ScrollView>
+                        </View>
 
                         {/* Prompt-to-Backdrop scene generator */}
                         <View style={{ gap: 10, marginTop: 6, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 14 }}>
                             <Text style={s.subSectionTitle}>AI Backdrop Scene Generator</Text>
                             <Text style={{ fontSize: 11, color: TEXT_SECONDARY }}>
-                                Describe the backdrop you want to create and Lumi AI will generate it:
+                                Describe the backdrop you want to create and NovaGlow AI will generate it:
                             </Text>
                             <TextInput
                                 style={{
@@ -861,7 +1323,7 @@ export default function EditorScreen() {
                             {/* Visual frames grid */}
                             <View style={s.timelineFramesRow}>
                                 {[1, 2, 3, 4, 5, 6].map((i) => (
-                                    <Image key={i} source={{ uri: mediaUrl }} style={s.miniFrame} />
+                                    <Image key={i} source={{ uri: mediaUrlState }} style={s.miniFrame} resizeMode="cover" />
                                 ))}
                             </View>
                             {/* Trim crop frame overlays */}
@@ -903,7 +1365,7 @@ export default function EditorScreen() {
                                     onPress={() => applyFilterPreset(f)}
                                     style={[s.filterPresetCard, activeFilterId === f.id && s.filterPresetCardActive]}
                                 >
-                                    <Image source={{ uri: f.sampleAfter }} style={s.filterPresetThumb} />
+                                    <Image source={{ uri: f.sampleAfter }} style={s.filterPresetThumb} resizeMode="cover" />
                                     <Text style={s.filterPresetName} numberOfLines={1}>{f.name}</Text>
                                 </Pressable>
                             ))}
@@ -1039,7 +1501,7 @@ export default function EditorScreen() {
                                     onPress={() => setSelectedAvatarStyle(style.id)}
                                     style={[s.backdropCard, selectedAvatarStyle === style.id && s.backdropCardActive]}
                                 >
-                                    <Image source={{ uri: style.thumbnail }} style={[s.backdropThumb, selectedAvatarStyle === style.id && { borderColor: ACCENT, borderWidth: 2 }]} />
+                                    <Image source={{ uri: style.thumbnail }} style={[s.backdropThumb, selectedAvatarStyle === style.id && { borderColor: ACCENT, borderWidth: 2 }]} resizeMode="cover" />
                                     <Text style={[s.backdropName, selectedAvatarStyle === style.id && { color: ACCENT, fontWeight: '700' }]} numberOfLines={1}>
                                         {style.name.split(' ')[0]}
                                     </Text>
@@ -1254,6 +1716,27 @@ const s = StyleSheet.create({
         borderRadius: 4
     },
     aspectBadgeText: { fontSize: 8.5, color: '#fff', fontWeight: '800' },
+    floatingCompareBtn: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.2)',
+        zIndex: 28,
+    },
+    floatingCompareText: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: '800',
+        textTransform: 'uppercase',
+    },
 
     // Before/After Splitting slider
     compareSplitLine: {
@@ -1425,40 +1908,32 @@ const s = StyleSheet.create({
 // Custom reactive 60fps Slider to work cleanly on web & mobile without extra native binary linking dependencies
 function Slider({ minimumValue = 0, maximumValue = 100, step = 1, value = 0, onValueChange, minimumTrackTintColor = ACCENT, maximumTrackTintColor = BORDER }: any) {
     const [sliderWidth, setSliderWidth] = useState(SW - 40)
-    const [sliderLeft, setSliderLeft] = useState(20)
-    const viewRef = useRef<View>(null)
 
-    const updateValue = (pageX: number) => {
-        const relativeX = pageX - sliderLeft
-        const percentage = Math.max(0, Math.min(1, relativeX / sliderWidth))
+    const handleTouch = (event: any) => {
+        const { locationX } = event.nativeEvent
+        const percentage = Math.max(0, Math.min(1, locationX / sliderWidth))
         const rawValue = minimumValue + percentage * (maximumValue - minimumValue)
         const steppedValue = Math.round(rawValue / step) * step
         onValueChange?.(steppedValue)
-    }
-
-    const handleTouch = (event: any) => {
-        const { pageX } = event.nativeEvent
-        updateValue(pageX)
     }
 
     const percentage = ((value - minimumValue) / (maximumValue - minimumValue)) * 100
 
     return (
         <View
-            ref={viewRef}
-            onLayout={() => {
-                viewRef.current?.measure((x, y, width, height, pageX, pageY) => {
-                    if (width) setSliderWidth(width)
-                    if (pageX) setSliderLeft(pageX)
-                })
+            onLayout={(e) => {
+                const w = e.nativeEvent.layout.width
+                if (w > 0) {
+                    setSliderWidth(w)
+                }
             }}
             onTouchStart={handleTouch}
             onTouchMove={handleTouch}
             style={{ height: 36, justifyContent: 'center', width: '100%', pointerEvents: 'auto' }}
         >
-            <View style={{ height: 4, width: '100%', backgroundColor: maximumTrackTintColor, borderRadius: 2, position: 'relative' }}>
-                <View style={{ height: '100%', width: `${percentage}%`, backgroundColor: minimumTrackTintColor, borderRadius: 2 }} />
-                <View style={{ position: 'absolute', top: -6, left: `${percentage}%`, marginLeft: -8, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff', borderWidth: 2, borderColor: minimumTrackTintColor }} />
+            <View style={{ height: 4, width: '100%', backgroundColor: maximumTrackTintColor, borderRadius: 2, position: 'relative', pointerEvents: 'none' }}>
+                <View style={{ height: '100%', width: `${percentage}%`, backgroundColor: minimumTrackTintColor, borderRadius: 2, pointerEvents: 'none' }} />
+                <View style={{ position: 'absolute', top: -6, left: `${percentage}%`, marginLeft: -8, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff', borderWidth: 2, borderColor: minimumTrackTintColor, pointerEvents: 'none' }} />
             </View>
         </View>
     )

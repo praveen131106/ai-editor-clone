@@ -1,7 +1,7 @@
 import { supabase, isSupabaseEnabled } from './supabase'
 
 /**
- * 🚀 Client API Layer for Lumi AI Image Processing.
+ * 🚀 Client API Layer for NovaGlow AI Image Processing.
  *
  * Automatically connects to Supabase Edge Functions if configured,
  * otherwise falls back gracefully to high-fidelity offline simulators.

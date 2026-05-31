@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { View, ScrollView, StyleSheet, Pressable } from 'react-native'
+import { View, ScrollView, StyleSheet, Pressable, DeviceEventEmitter } from 'react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -10,7 +10,7 @@ import { AlertModal } from '@/components/ui/AppModal'
 import SettingsRow from '@/components/ui/SettingsRow'
 import { useSubscription } from '@/contexts/SubscriptionContext'
 import { logoutRevenueCat } from '@/lib/purchases'
-import { supabase } from '@/lib/supabase'
+import { supabase, isSupabaseEnabled } from '@/lib/supabase'
 import { track } from '@/lib/analytics'
 import { adjustBrightness } from '@/lib/utils'
 import {
@@ -43,10 +43,16 @@ export default function ProfileScreen() {
         try {
             track('logout')
             await logoutRevenueCat()
-            const { error } = await supabase.auth.signOut()
-            if (error) throw error
+            
+            // First emit local sign out so that guest sessions are immediately cleared
+            DeviceEventEmitter.emit('__local_sign_out__')
+            
+            if (isSupabaseEnabled) {
+                await supabase.auth.signOut()
+            }
+            router.replace('/(auth)/login')
         } catch (e: any) {
-            setErrorModal(e?.message ?? 'Sign out failed. Please try again.')
+            console.warn('[Profile] Sign out warning:', e)
         } finally {
             setSigningOut(false)
         }

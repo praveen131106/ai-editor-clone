@@ -1,5 +1,5 @@
 /**
- * 🎨 Mock / placeholder data for Lumi AI.
+ * 🎨 Mock / placeholder data for NovaGlow AI.
  *
  * Provides high-fidelity creative templates, portrait assets, background overlays,
  * audio tracks, and maps standard structures to represent editing projects history.
@@ -59,13 +59,13 @@ export type FaqItem = {
     answer: string
 }
 
-// ─── Custom Creative Types (For Lumi Editor) ──────────────────────────────────
+// ─── Custom Creative Types (For NovaGlow Editor) ──────────────────────────────────
 
 export type AIStyleFilter = {
     id: string
     name: string
     tagline: string
-    category: 'Glitch' | 'Glow' | 'Comic' | 'Retro' | 'Cyber'
+    category: 'Glitch' | 'Glow' | 'Comic' | 'Retro' | 'Cyber' | 'Retouch' | 'Studio' | 'Fashion' | 'Warm' | 'Social' | 'Signature'
     sampleBefore: string
     sampleAfter: string
     intensity: number
@@ -109,7 +109,7 @@ export type AIStoryTemplate = {
 
 export const demoUser = {
     fullName: 'Praveen Nayak',
-    email: 'praveen@lumi.ai',
+    email: 'praveen@novaglow.ai',
     role: 'Creator Pro',
     teamName: 'Studio Team',
     initials: 'PN',
@@ -152,100 +152,146 @@ export const STOCK_VIDEOS = [
 
 export const AI_STYLE_FILTERS: AIStyleFilter[] = [
     {
-        id: 'filter-1',
-        name: 'Cyber Glitch 2099',
-        tagline: 'Futuristic cyan/magenta VHS glow and shift effects',
-        category: 'Cyber',
-        sampleBefore: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&auto=format&fit=crop',
-        sampleAfter: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&auto=format&fit=crop',
-        intensity: 85,
-        glowIntensity: 90,
-        lipColor: '#ff007f',
-        eyeSize: 1.15,
-        overlayStyle: 'glitch'
-    },
-    {
-        id: 'filter-2',
-        name: 'Honey Gold Glow',
-        tagline: 'Skin smoothing with elegant warm sunset lighting',
-        category: 'Glow',
+        id: 'filter-natural',
+        name: 'Natural Glow',
+        tagline: 'Flawless skin smoothing with subtle ambient brightness',
+        category: 'Retouch',
         sampleBefore: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop',
         sampleAfter: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop',
-        intensity: 95,
-        glowIntensity: 80,
+        intensity: 40,
+        glowIntensity: 30,
         lipColor: '#f43f5e',
-        eyeSize: 1.08,
-        overlayStyle: 'glow'
+        eyeSize: 1.04,
+        overlayStyle: 'natural'
     },
     {
-        id: 'filter-3',
-        name: 'Vintage Film 1998',
-        tagline: 'Film noise, retro warm hue, and soft light leaks',
-        category: 'Retro',
+        id: 'filter-soft',
+        name: 'Soft Beauty',
+        tagline: 'Deep facial softening, skin blur, and pastel tones',
+        category: 'Retouch',
         sampleBefore: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=300&auto=format&fit=crop',
         sampleAfter: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=300&auto=format&fit=crop',
-        intensity: 75,
-        glowIntensity: 45,
-        lipColor: '#b91c1c',
-        eyeSize: 1.0,
-        overlayStyle: 'retro'
+        intensity: 85,
+        glowIntensity: 50,
+        lipColor: '#fdba74',
+        eyeSize: 1.06,
+        overlayStyle: 'soft'
     },
     {
-        id: 'filter-4',
-        name: 'Manga Pop Art',
-        tagline: 'High-contrast ink outlines and retro halftone dots',
-        category: 'Comic',
-        sampleBefore: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop',
-        sampleAfter: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop',
-        intensity: 90,
-        glowIntensity: 30,
-        lipColor: '#000000',
-        eyeSize: 1.2,
-        overlayStyle: 'comic'
-    },
-    {
-        id: 'filter-5',
-        name: 'Electric Neon Dream',
-        tagline: 'Rim-lighting outline with deep fuchsia saturation',
-        category: 'Cyber',
+        id: 'filter-studio',
+        name: 'Studio Light',
+        tagline: 'Bright clear exposure, highlight glows, and pink lips',
+        category: 'Studio',
         sampleBefore: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&auto=format&fit=crop',
         sampleAfter: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&auto=format&fit=crop',
-        intensity: 80,
-        glowIntensity: 95,
+        intensity: 50,
+        glowIntensity: 65,
+        lipColor: '#ff007f',
+        eyeSize: 1.08,
+        overlayStyle: 'studio'
+    },
+    {
+        id: 'filter-model',
+        name: 'Fashion Model',
+        tagline: 'High sharpness, cool shadow tones, and deep red highlights',
+        category: 'Fashion',
+        sampleBefore: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop',
+        sampleAfter: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop',
+        intensity: 30,
+        glowIntensity: 20,
+        lipColor: '#b91c1c',
+        eyeSize: 1.02,
+        overlayStyle: 'model'
+    },
+    {
+        id: 'filter-golden',
+        name: 'Golden Hour',
+        tagline: 'Stunning warm amber highlights and sun-kissed lighting',
+        category: 'Warm',
+        sampleBefore: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=300&auto=format&fit=crop',
+        sampleAfter: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=300&auto=format&fit=crop',
+        intensity: 60,
+        glowIntensity: 55,
+        lipColor: '#f43f5e',
+        eyeSize: 1.08,
+        overlayStyle: 'golden'
+    },
+    {
+        id: 'filter-influencer',
+        name: 'Influencer',
+        tagline: 'High color saturation, pink overlays, and soft contrast',
+        category: 'Social',
+        sampleBefore: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&auto=format&fit=crop',
+        sampleAfter: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&auto=format&fit=crop',
+        intensity: 70,
+        glowIntensity: 45,
         lipColor: '#d946ef',
         eyeSize: 1.1,
-        overlayStyle: 'neon'
+        overlayStyle: 'influencer'
+    },
+    {
+        id: 'filter-luxury',
+        name: 'Luxury Portrait',
+        tagline: 'Desaturated, stylized luxury matte tones with high contrast',
+        category: 'Fashion',
+        sampleBefore: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop',
+        sampleAfter: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop',
+        intensity: 45,
+        glowIntensity: 35,
+        lipColor: '#dc2626',
+        eyeSize: 1.0,
+        overlayStyle: 'luxury'
+    },
+    {
+        id: 'filter-novaglow',
+        name: 'NovaGlow Signature',
+        tagline: 'Exclusive deep pink satin skin, bright focus and contrast',
+        category: 'Signature',
+        sampleBefore: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&auto=format&fit=crop',
+        sampleAfter: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&auto=format&fit=crop',
+        intensity: 75,
+        glowIntensity: 60,
+        lipColor: '#ff007f',
+        eyeSize: 1.12,
+        overlayStyle: 'glamx'
     }
 ]
 
 export const PRESET_BACKDROPS: PresetBackdrop[] = [
     {
-        id: 'bg-cyber',
-        name: 'Neon Cyberpunk City',
-        thumbnail: 'https://images.unsplash.com/photo-1515621061946-eff1c2a352bd?q=80&w=150&auto=format&fit=crop',
-        image: 'https://images.unsplash.com/photo-1515621061946-eff1c2a352bd?q=80&w=600&auto=format&fit=crop',
-        category: 'neon'
-    },
-    {
         id: 'bg-beach',
-        name: 'Sunset Beach Coast',
+        name: 'Beach',
         thumbnail: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=150&auto=format&fit=crop',
         image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop',
         category: 'beach'
     },
     {
-        id: 'bg-glass',
-        name: 'Frosted Glassmorphism',
+        id: 'bg-office',
+        name: 'Office',
+        thumbnail: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=150&auto=format&fit=crop',
+        image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=600&auto=format&fit=crop',
+        category: 'studio'
+    },
+    {
+        id: 'bg-studio',
+        name: 'Studio',
+        thumbnail: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=150&auto=format&fit=crop',
+        image: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=600&auto=format&fit=crop',
+        category: 'studio'
+    },
+    {
+        id: 'bg-gradient',
+        name: 'Gradient',
         thumbnail: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=150&auto=format&fit=crop',
         image: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop',
         category: 'gradient'
     },
     {
-        id: 'bg-studio',
-        name: 'Luxury Marble Studio',
-        thumbnail: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=150&auto=format&fit=crop',
-        image: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=600&auto=format&fit=crop',
-        category: 'studio'
+        id: 'bg-sunset',
+        name: 'Sunset',
+        thumbnail: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=150&auto=format&fit=crop',
+        image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=600&auto=format&fit=crop',
+        category: 'beach'
     }
 ]
 
@@ -284,7 +330,7 @@ export const AI_AVATAR_STYLES: AIAvatarStyle[] = [
 ]
 
 export const AI_STORY_TEMPLATES: AIStoryTemplate[] = [
-    { id: 'story-magazine', name: 'Lumi Magazine', tagline: 'Vogue-style high-end editorial layout', layout: 'magazine' },
+    { id: 'story-magazine', name: 'NovaGlow Cover', tagline: 'Vogue-style high-end editorial layout', layout: 'magazine' },
     { id: 'story-retro', name: 'Retro Filmstrip', tagline: 'Classic 35mm warm analogue borders', layout: 'retro' },
     { id: 'story-neon', name: 'Neon Splash', tagline: 'Electric glowing borders & outline highlights', layout: 'neon' },
     { id: 'story-influencer', name: 'Viral Splash', tagline: 'Modern sleek card overlays and stats', layout: 'influencer' }
@@ -396,7 +442,7 @@ export const notificationItems: NotificationItem[] = [
     {
         id: 'notif-2',
         title: 'Influencer spotlight',
-        body: 'Taylor used your Lumi Gold Glow layout for Reels!',
+        body: 'Taylor used your NovaGlow Golden Hour layout for Reels!',
         timeAgo: '58m ago',
         category: 'team',
         read: false,
@@ -417,7 +463,7 @@ export const supportFaq: FaqItem[] = [
     {
         id: 'faq-1',
         question: 'How does the AI skin retouching work?',
-        answer: 'Lumi AI runs client-side bilateral surface blur and edge-preserving filters. This detects skin gradients and smooths blemishes while keeping features like eyes, lips, and hair sharp.',
+        answer: 'NovaGlow AI runs client-side bilateral surface blur and edge-preserving filters. This detects skin gradients and smooths blemishes while keeping features like eyes, lips, and hair sharp.',
     },
     {
         id: 'faq-2',

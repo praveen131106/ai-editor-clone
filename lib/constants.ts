@@ -11,20 +11,20 @@
  */
 
 /** Display name shown in headers, onboarding, and the landing page. */
-export const APP_NAME = 'Lumi AI'
+export const APP_NAME = 'NovaGlow AI'
 
 /** URL scheme matching expo.scheme in app.json — used for OAuth deep link callbacks. */
-export const APP_SCHEME = 'lumiai'
+export const APP_SCHEME = 'novaglow'
 
 /** Support email shown on the Support screen. */
-export const APP_SUPPORT_EMAIL = 'support@lumi.ai'
+export const APP_SUPPORT_EMAIL = 'support@novaglow.ai'
 
 /** Documentation URL shown on the Support screen. */
-export const APP_DOCS_URL = 'https://lumi.ai/docs'
+export const APP_DOCS_URL = 'https://novaglow.ai/docs'
 
 /** One-liner shown on the landing page below the app name. */
-export const APP_TAGLINE = 'Creative Photo & Video Studio'
+export const APP_TAGLINE = 'Luxury AI Beauty & Creative Studio'
 
 /** Short description used in marketing / onboarding contexts. */
 export const APP_DESCRIPTION =
-  'Lumi AI is the ultimate minimalist creative suite for photo & video editing. Turn standard shots into viral influencer content with skin retouching, background swapping, glitches, and avatar generators.'
+  'NovaGlow AI is the ultimate luxury creative suite for photo & video editing. Turn standard shots into viral influencer content with skin retouching, background swapping, glitches, and avatar generators.'

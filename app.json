@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Lumi AI",
-    "slug": "lumi-ai",
+    "name": "NovaGlow AI",
+    "slug": "novaglow-ai",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "lumiai",
+    "scheme": "novaglow",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
@@ -14,13 +14,13 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.praveen.lumi",
+      "bundleIdentifier": "com.praveen.novaglow",
       "associatedDomains": [
         "applinks:REPLACE_WITH_YOUR_DOMAIN"
       ]
     },
     "android": {
-      "package": "com.praveen.lumi",
+      "package": "com.praveen.novaglow",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0d0d0d"
@@ -42,7 +42,7 @@
           "autoVerify": true,
           "data": [
             {
-              "scheme": "lumiai"
+              "scheme": "novaglow"
             }
           ],
           "category": [
@@ -80,7 +80,14 @@
       "@sentry/react-native",
       "expo-video",
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow NovaGlow AI to access your photos to save edited content.",
+          "savePhotosPermission": "Allow NovaGlow AI to save creations to your gallery."
+        }
+      ]
     ],
     "extra": {
       "router": {},

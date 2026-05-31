@@ -11,16 +11,15 @@
  *   3. Optionally change BG for a different dark shade
  */
 
-// ── Primary brand color ───────────────────────────────────────────────────────
-// 🎨 Change this one value to rebrand the whole app
-export const ACCENT = '#f43f5e'           // Rose Pink Lumi color
+export const ACCENT = '#a78bfa'           // Luxury Purple
+export const GOLD = '#d4af37'             // Refined Luxury Gold
 
 // Derived from ACCENT — adjust opacity as needed
-export const ACCENT_DIM = 'rgba(244,63,94,0.12)'
-export const ACCENT_BORDER = 'rgba(244,63,94,0.30)'
-export const ACCENT_GLOW = 'rgba(244,63,94,0.20)'
+export const ACCENT_DIM = 'rgba(167,139,250,0.12)'
+export const ACCENT_BORDER = 'rgba(167,139,250,0.30)'
+export const ACCENT_GLOW = 'rgba(167,139,250,0.20)'
 // Text color on dark background using accent tone
-export const ACCENT_LIGHT = '#fecdd3'
+export const ACCENT_LIGHT = '#f5f3ff'
 
 // ── Backgrounds ───────────────────────────────────────────────────────────────
 export const BG = '#0d0d0d'        // main app background

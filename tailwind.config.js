@@ -11,7 +11,7 @@ module.exports = {
     extend: {
       colors: {
         background: '#0d0d0d',
-        accent: '#f43f5e',      // 🎨 BRAND: your primary accent color
+        accent: '#a78bfa',      // 🎨 BRAND: your primary accent color
         surface: '#1a1a1a',
         surface2: '#242424',
         muted: '#6b7280',

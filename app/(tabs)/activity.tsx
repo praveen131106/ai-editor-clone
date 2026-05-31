@@ -4,11 +4,11 @@ import {
     ScrollView,
     StyleSheet,
     Pressable,
-    Image,
     Alert,
     ActivityIndicator,
     DeviceEventEmitter
 } from 'react-native'
+import { Image } from 'expo-image'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -43,11 +43,11 @@ export default function ActivityScreen() {
     const loadCreations = async () => {
         setIsLoading(true)
         try {
-            const stored = await AsyncStorage.getItem('lumi_projects')
+            const stored = await AsyncStorage.getItem('novaglow_projects')
             if (stored) {
                 setCreations(JSON.parse(stored))
             } else {
-                await AsyncStorage.setItem('lumi_projects', JSON.stringify(defaultProjects))
+                await AsyncStorage.setItem('novaglow_projects', JSON.stringify(defaultProjects))
                 setCreations(defaultProjects)
             }
         } catch (e) {
@@ -60,11 +60,11 @@ export default function ActivityScreen() {
     // Load notifications from AsyncStorage
     const loadNotifications = async () => {
         try {
-            const stored = await AsyncStorage.getItem('lumi_notifications')
+            const stored = await AsyncStorage.getItem('novaglow_notifications')
             if (stored) {
                 setNotifications(JSON.parse(stored))
             } else {
-                await AsyncStorage.setItem('lumi_notifications', JSON.stringify(defaultNotifications))
+                await AsyncStorage.setItem('novaglow_notifications', JSON.stringify(defaultNotifications))
                 setNotifications(defaultNotifications)
             }
         } catch (e) {
@@ -83,7 +83,7 @@ export default function ActivityScreen() {
     }, [navigation])
 
     useEffect(() => {
-        const sub = DeviceEventEmitter.addListener('lumi_new_notification', () => {
+        const sub = DeviceEventEmitter.addListener('novaglow_new_notification', () => {
             loadNotifications()
         })
         return () => sub.remove()
@@ -107,7 +107,7 @@ export default function ActivityScreen() {
                     onPress: async () => {
                         const updated = creations.filter((item) => item.id !== id)
                         setCreations(updated)
-                        await AsyncStorage.setItem('lumi_projects', JSON.stringify(updated))
+                        await AsyncStorage.setItem('novaglow_projects', JSON.stringify(updated))
                     }
                 }
             ]
@@ -249,9 +249,9 @@ export default function ActivityScreen() {
                                     {!notif.read && (
                                         <Pressable
                                             onPress={async () => {
-                                                const updated = notifications.map(n => n.id === notif.id ? { ...n, read: true } : n)
-                                                setNotifications(updated)
-                                                await AsyncStorage.setItem('lumi_notifications', JSON.stringify(updated))
+                                                 const updated = notifications.map(n => n.id === notif.id ? { ...n, read: true } : n)
+                                                 setNotifications(updated)
+                                                 await AsyncStorage.setItem('novaglow_notifications', JSON.stringify(updated))
                                             }}
                                             style={{ backgroundColor: `${ACCENT}15`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
                                         >

@@ -8,7 +8,8 @@ import {
     Image,
     Dimensions,
     ActivityIndicator,
-    Modal
+    Modal,
+    Alert
 } from 'react-native'
 import { router, useNavigation } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -19,7 +20,8 @@ import { LinearGradient } from 'expo-linear-gradient'
 
 import { Text } from '@/components/ui/Text'
 import { Card } from '@/components/ui/Card'
-// Custom Modal replaces AlertModal import to support clean custom child overlays
+import { useMedia } from '@/contexts/MediaContext'
+import { copyToAppStorage, validateFileUri } from '@/lib/mediaUtils'
 import {
     ACCENT,
     ACCENT_DIM,
@@ -46,9 +48,11 @@ const { width: SW } = Dimensions.get('window')
 export default function HomeScreen() {
     const insets = useSafeAreaInsets()
     const navigation = useNavigation()
+    const { setMedia } = useMedia()
     const [refreshing, setRefreshing] = useState(false)
     const [projects, setProjects] = useState<ItemSummary[]>([])
     const [isLoadingProjects, setIsLoadingProjects] = useState(true)
+    const [isProcessing, setIsProcessing] = useState(false)
 
     // Stock Media Picker State
     const [isMediaModalOpen, setIsMediaModalOpen] = useState(false)
@@ -67,12 +71,12 @@ export default function HomeScreen() {
     const loadProjects = async () => {
         setIsLoadingProjects(true)
         try {
-            const stored = await AsyncStorage.getItem('lumi_projects')
+            const stored = await AsyncStorage.getItem('novaglow_projects')
             if (stored) {
                 setProjects(JSON.parse(stored))
             } else {
                 // Seed default mock projects if none exist
-                await AsyncStorage.setItem('lumi_projects', JSON.stringify(defaultProjects))
+                await AsyncStorage.setItem('novaglow_projects', JSON.stringify(defaultProjects))
                 setProjects(defaultProjects)
             }
         } catch (e) {
@@ -97,46 +101,117 @@ export default function HomeScreen() {
         setRefreshing(false)
     }
 
-    // Launch gallery image/video picker
-    const launchGalleryPicker = async () => {
+    /**
+     * Process a picked asset: validate, copy to app storage, set in context, navigate.
+     */
+    const processAndNavigate = async (asset: ImagePicker.ImagePickerAsset, mediaType: 'image' | 'video', tool: string) => {
+        const uri = asset.uri
+        console.log('[Home] Raw picked URI:', uri)
+        console.log('[Home] Asset:', JSON.stringify({ width: asset.width, height: asset.height, fileSize: asset.fileSize, type: asset.type }))
+
+        // Validate the asset
+        if (!uri || uri.length === 0) {
+            Alert.alert('Error', 'Image picker returned an empty URI.')
+            return
+        }
+
+        setIsProcessing(true)
+
+        try {
+            // Copy to stable app storage
+            const stableUri = await copyToAppStorage(uri)
+            console.log('[Home] Stable URI:', stableUri)
+
+            // Validate the copied file
+            const validation = await validateFileUri(stableUri)
+            console.log('[Home] Validation:', JSON.stringify(validation))
+
+            if (!validation.exists) {
+                Alert.alert('Error', 'Failed to save the selected image. The file could not be copied.')
+                setIsProcessing(false)
+                return
+            }
+
+            // Set in global context
+            setMedia({
+                uri: stableUri,
+                originalUri: uri,
+                type: mediaType,
+                fileSize: asset.fileSize || validation.size || 0,
+                width: asset.width || 0,
+                height: asset.height || 0,
+                initialTool: tool,
+                filterId: '',
+                projectId: '',
+            })
+
+            // Navigate WITHOUT passing URI in params
+            router.push('/editor')
+        } catch (error) {
+            console.error('[Home] processAndNavigate error:', error)
+            Alert.alert('Error', 'Something went wrong processing the image.')
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    // Launch camera picker
+    const launchCameraPicker = async () => {
         setIsMediaModalOpen(false)
-        const permission = selectedMediaType === 'image'
-            ? await ImagePicker.requestMediaLibraryPermissionsAsync()
-            : await ImagePicker.requestMediaLibraryPermissionsAsync()
+        const permission = await ImagePicker.requestCameraPermissionsAsync()
+        if (!permission.granted) {
+            Alert.alert('Permission Denied', 'NovaGlow AI requires camera access to take new photos and videos.')
+            return
+        }
 
-        if (!permission.granted) return
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: selectedMediaType === 'image' ? ImagePicker.MediaTypeOptions.Images : ImagePicker.MediaTypeOptions.Videos,
+        const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: selectedMediaType === 'image' ? ['images'] : ['videos'],
             allowsEditing: true,
             aspect: [9, 16],
             quality: 1,
         })
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
-            const uri = result.assets[0].uri
-            router.push({
-                pathname: '/editor',
-                params: {
-                    mediaType: selectedMediaType,
-                    mediaUrl: uri,
-                    initialTool: pickerTargetTool
-                }
-            })
+            await processAndNavigate(result.assets[0], selectedMediaType, pickerTargetTool)
         }
     }
 
-    // Select preloaded stock media to edit instantly
+    // Launch gallery image/video picker
+    const launchGalleryPicker = async () => {
+        setIsMediaModalOpen(false)
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+        if (!permission.granted) {
+            Alert.alert('Permission Denied', 'Gallery access is required.')
+            return
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: selectedMediaType === 'image' ? ['images'] : ['videos'],
+            allowsEditing: true,
+            aspect: [9, 16],
+            quality: 1,
+        })
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            await processAndNavigate(result.assets[0], selectedMediaType, pickerTargetTool)
+        }
+    }
+
+    // Select preloaded stock media to edit instantly (no copy needed for remote URLs)
     const selectStockMedia = (url: string) => {
         setIsMediaModalOpen(false)
-        router.push({
-            pathname: '/editor',
-            params: {
-                mediaType: selectedMediaType,
-                mediaUrl: url,
-                initialTool: pickerTargetTool
-            }
+        setMedia({
+            uri: url,
+            originalUri: url,
+            type: selectedMediaType,
+            fileSize: 0,
+            width: 0,
+            height: 0,
+            initialTool: pickerTargetTool,
+            filterId: '',
+            projectId: '',
         })
+        router.push('/editor')
     }
 
     // Trigger tool picker modal
@@ -156,16 +231,24 @@ export default function HomeScreen() {
             {/* Header / Brand bar */}
             <View style={s.header}>
                 <View>
-                    <Text style={s.brandLogo}>Lumi <Text style={{ color: ACCENT }}>AI</Text></Text>
+                    <Text style={s.brandLogo}>NovaGlow <Text style={{ color: ACCENT }}>AI</Text></Text>
                     <Text style={s.subGreeting}>{greeting}, Creator</Text>
                 </View>
-                <Pressable
-                    onPress={() => router.push('/upgrade')}
-                    style={({ pressed }) => [s.proBadge, pressed && { opacity: 0.8 }]}
-                >
-                    <Ionicons name="sparkles" size={14} color="#fff" />
-                    <Text style={s.proBadgeText}>PRO</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                    <Pressable
+                        onPress={() => router.push('/image-debug')}
+                        style={({ pressed }) => [s.debugBadge, pressed && { opacity: 0.8 }]}
+                    >
+                        <Ionicons name="bug-outline" size={14} color="#fff" />
+                    </Pressable>
+                    <Pressable
+                        onPress={() => router.push('/upgrade')}
+                        style={({ pressed }) => [s.proBadge, pressed && { opacity: 0.8 }]}
+                    >
+                        <Ionicons name="sparkles" size={14} color="#fff" />
+                        <Text style={s.proBadgeText}>PRO</Text>
+                    </Pressable>
+                </View>
             </View>
 
             {/* Trending Viral Filters Banner (Horizontal Scroll) */}
@@ -178,15 +261,20 @@ export default function HomeScreen() {
                 {AI_STYLE_FILTERS.map((filter) => (
                     <Pressable
                         key={filter.id}
-                        onPress={() => router.push({
-                            pathname: '/editor',
-                            params: {
-                                mediaType: filter.id === 'filter-2' ? 'image' : 'image', // default portrait
-                                mediaUrl: filter.sampleBefore,
+                        onPress={() => {
+                            setMedia({
+                                uri: filter.sampleBefore,
+                                originalUri: filter.sampleBefore,
+                                type: 'image',
+                                fileSize: 0,
+                                width: 0,
+                                height: 0,
+                                initialTool: 'filters',
                                 filterId: filter.id,
-                                initialTool: 'filters'
-                            }
-                        })}
+                                projectId: '',
+                            })
+                            router.push('/editor')
+                        }}
                         style={({ pressed }) => [s.bannerCard, pressed && { opacity: 0.9 }]}
                     >
                         <Image source={{ uri: filter.sampleAfter }} style={s.bannerImage} />
@@ -308,14 +396,20 @@ export default function HomeScreen() {
                     {projects.slice(0, 3).map((proj) => (
                         <Pressable
                             key={proj.id}
-                            onPress={() => router.push({
-                                pathname: '/editor',
-                                params: {
-                                    mediaType: proj.mediaType,
-                                    mediaUrl: proj.mediaUrl,
-                                    projectId: proj.id
-                                }
-                            })}
+                            onPress={() => {
+                                setMedia({
+                                    uri: proj.mediaUrl,
+                                    originalUri: proj.mediaUrl,
+                                    type: proj.mediaType,
+                                    fileSize: 0,
+                                    width: 0,
+                                    height: 0,
+                                    initialTool: 'retouch',
+                                    filterId: '',
+                                    projectId: proj.id,
+                                })
+                                router.push('/editor')
+                            }}
                             style={({ pressed }) => [s.projectCard, pressed && { opacity: 0.85 }]}
                         >
                             <Image source={{ uri: proj.thumbnail }} style={s.projectThumb} />
@@ -353,7 +447,7 @@ export default function HomeScreen() {
                             </Pressable>
                         </View>
                         <View style={s.modalBody}>
-                            <Text style={s.modalSubtitle}>Choose a pre-loaded stock model to test Lumi AI features instantly, or upload from your device:</Text>
+                            <Text style={s.modalSubtitle}>Choose a pre-loaded stock model to test NovaGlow AI features instantly, or upload from your device:</Text>
 
                             {/* Stock models row */}
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.stockRow}>
@@ -385,14 +479,24 @@ export default function HomeScreen() {
                                 )}
                             </ScrollView>
 
-                            {/* Upload from device button */}
-                            <Pressable
-                                onPress={launchGalleryPicker}
-                                style={({ pressed }) => [s.uploadBtn, pressed && { opacity: 0.85 }]}
-                            >
-                                <Ionicons name="cloud-upload" size={20} color="#fff" />
-                                <Text style={s.uploadBtnText}>Upload from Camera Roll</Text>
-                            </Pressable>
+                            {/* Upload buttons stacked beautifully */}
+                            <View style={{ gap: 10, marginTop: 6 }}>
+                                <Pressable
+                                    onPress={launchCameraPicker}
+                                    style={({ pressed }) => [s.uploadBtn, { backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER }, pressed && { opacity: 0.85 }]}
+                                >
+                                    <Ionicons name="camera-outline" size={20} color={ACCENT} />
+                                    <Text style={[s.uploadBtnText, { color: '#fff' }]}>Take a New Photo/Video</Text>
+                                </Pressable>
+
+                                <Pressable
+                                    onPress={launchGalleryPicker}
+                                    style={({ pressed }) => [s.uploadBtn, pressed && { opacity: 0.85 }]}
+                                >
+                                    <Ionicons name="cloud-upload-outline" size={20} color="#fff" />
+                                    <Text style={s.uploadBtnText}>Upload from Camera Roll</Text>
+                                </Pressable>
+                            </View>
                         </View>
                     </View>
                 </View>
@@ -419,6 +523,16 @@ const s = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 5,
         elevation: 4,
+    },
+    debugBadge: {
+        width: 30,
+        height: 30,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: SURFACE,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: BORDER,
     },
     proBadgeText: { fontSize: 11, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
     sectionTitle: {

@@ -334,6 +334,29 @@ export default function LoginScreen() {
                     <Text style={s.socialBtnText}>Apple</Text>
                   </Pressable>
                 </View>
+
+                {/* ─── Guest Bypass Login ────────────────────── */}
+                <Pressable
+                  onPress={() => DeviceEventEmitter.emit('__local_sign_in__')}
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.85 : 1,
+                    borderRadius: 14, overflow: 'hidden',
+                    marginTop: 8,
+                    borderWidth: 1,
+                    borderColor: '#d4af37',
+                  })}
+                >
+                  <LinearGradient
+                    colors={['rgba(212,175,55,0.15)', 'rgba(0,0,0,0.2)']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                    style={s.btn}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="person-outline" size={16} color="#d4af37" />
+                      <Text style={[s.btnText, { color: '#d4af37' }]}>Continue as Guest</Text>
+                    </View>
+                  </LinearGradient>
+                </Pressable>
               </View>
             )}
 
@@ -402,16 +425,7 @@ export default function LoginScreen() {
               </View>
             )}
 
-            {/* ─── Dev skip button (only visible in __DEV__) ─────────────────── */}
-            {DEV_ALLOW_SKIP && (
-              <Pressable
-                onPress={handleDevSkip}
-                style={({ pressed }) => [s.devSkipBtn, pressed && { opacity: 0.6 }]}
-              >
-                <Ionicons name="play-skip-forward-outline" size={14} color={TEXT_SECONDARY} />
-                <Text style={s.devSkipText}>Skip to Home (dev only)</Text>
-              </Pressable>
-            )}
+
 
             {/* Legal */}
             <View style={s.legalRow}>

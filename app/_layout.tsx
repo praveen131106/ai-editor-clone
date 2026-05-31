@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { View, StyleSheet, Platform, DeviceEventEmitter, Linking } from 'react-native'
+import { View, StyleSheet, Platform, DeviceEventEmitter, Linking, useColorScheme } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Stack, useNavigationContainerRef, usePathname, router } from 'expo-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '@/lib/queryClient'
@@ -27,7 +28,7 @@ import {
   Inter_700Bold,
   Inter_800ExtraBold,
 } from '@expo-google-fonts/inter'
-import { ThemeProvider, DarkTheme } from '@react-navigation/native'
+import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native'
 import { PostHogProvider } from 'posthog-react-native'
 import { I18nextProvider } from 'react-i18next'
 
@@ -36,6 +37,7 @@ import { posthog, isPostHogEnabled, identify, resetIdentity, track } from '@/lib
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from '@/lib/purchases'
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext'
 import { ToastProvider } from '@/contexts/ToastContext'
+import { MediaProvider } from '@/contexts/MediaContext'
 import i18n, { initI18n } from '@/lib/i18n'
 import OfflineBanner from '@/components/OfflineBanner'
 import OfflineOverlay from '@/components/OfflineOverlay'
@@ -92,6 +94,17 @@ const customDarkTheme = {
   colors: { ...DarkTheme.colors, background: BG },
 }
 
+const customLightTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#ffffff',
+    card: '#f4f4f5',
+    text: '#09090b',
+    border: 'rgba(9,9,11,0.08)',
+  },
+}
+
 // ─── Conditional PostHog provider ─────────────────────────────────────────────
 // PostHogProvider requires a valid client instance. When the API key is missing
 // we skip the provider entirely so no errors are thrown.
@@ -116,12 +129,12 @@ function ScreenTracker() {
 
 import { useToast } from '@/contexts/ToastContext'
 
-function LumiBootstrap({ children }: { children: React.ReactNode }) {
+function NovaGlowBootstrap({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast()
 
   useEffect(() => {
     // 1. Listen to reactive notification alerts
-    const notifSub = DeviceEventEmitter.addListener('lumi_new_notification', (notif: any) => {
+    const notifSub = DeviceEventEmitter.addListener('novaglow_new_notification', (notif: any) => {
       if (notif) {
         showToast(notif.title, 'success')
       }
@@ -136,7 +149,7 @@ function LumiBootstrap({ children }: { children: React.ReactNode }) {
       
       if (url.includes('promo')) {
         showToast('Premium Filter Unlocked! 🚀', 'success')
-        triggerLocalNotification('Promo Unlocked!', 'Welcome back to Lumi AI! Premium features have been unlocked via link.')
+        triggerLocalNotification('Promo Unlocked!', 'Welcome back to NovaGlow AI! Premium features have been unlocked via link.')
       } else if (url.includes('tool=')) {
         const match = url.match(/tool=([^&]+)/)
         const tool = match ? match[1] : 'beauty'
@@ -179,6 +192,25 @@ function RootLayout() {
   // null = loading; false = not completed; true = completed
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null)
   const [i18nReady, setI18nReady] = useState(false)
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('dark')
+  const systemScheme = useColorScheme()
+
+  useEffect(() => {
+    AsyncStorage.getItem('novaglow_theme').then((val) => {
+      if (val === 'light' || val === 'dark' || val === 'system') {
+        setThemeMode(val as any)
+      }
+    })
+
+    const themeSub = DeviceEventEmitter.addListener('novaglow_theme_changed', (newTheme) => {
+      setThemeMode(newTheme)
+    })
+    return () => themeSub.remove()
+  }, [])
+
+  const activeTheme = themeMode === 'system' 
+    ? (systemScheme === 'light' ? customLightTheme : customDarkTheme)
+    : (themeMode === 'light' ? customLightTheme : customDarkTheme)
 
   useEffect(() => {
     initI18n().then(() => setI18nReady(true))
@@ -194,63 +226,98 @@ function RootLayout() {
     // Configure RevenueCat once at startup, before any user is known
     configureRevenueCat()
 
-    if (!isSupabaseEnabled) {
-      // No credentials — stay on landing page, no errors thrown
-      setIsAuthed(false)
-      return
-    }
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthed(!!session)
-      if (session?.user) {
-        setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
-        loginRevenueCat(session.user.id)
-        identify(
-          session.user.id,
-          session.user.email ? { email: session.user.email } : undefined
-        )
+    // 1. Check local guest session first for offline / demo mode
+    AsyncStorage.getItem('novaglow_local_session').then((val) => {
+      if (val === 'true') {
+        console.log('[Auth] Restored persistent guest session.')
+        setIsAuthed(true)
+        setOnboardingCompleted(true)
       } else {
-        setOnboardingCompleted(null)
+        if (!isSupabaseEnabled) {
+          // No credentials — stay on landing page, no errors thrown
+          setIsAuthed(false)
+          return
+        }
+
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          setIsAuthed(!!session)
+          if (session?.user) {
+            setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
+            loginRevenueCat(session.user.id)
+            identify(
+              session.user.id,
+              session.user.email ? { email: session.user.email } : undefined
+            )
+          } else {
+            setOnboardingCompleted(null)
+          }
+        }).catch(() => {
+          console.warn('[Auth] Could not reach Supabase — defaulting to signed-out state.')
+          setIsAuthed(false)
+        })
       }
     }).catch(() => {
-      console.warn('[Auth] Could not reach Supabase — defaulting to signed-out state.')
       setIsAuthed(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setIsAuthed(true)
-        setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
-        loginRevenueCat(session.user.id)
-        identify(
-          session.user.id,
-          session.user.email ? { email: session.user.email } : undefined
-        )
-      }
-      if (event === 'SIGNED_OUT') {
-        setIsAuthed(false)
-        setOnboardingCompleted(null)
-        logoutRevenueCat()
-        resetIdentity()
-      }
-      if (event === 'USER_UPDATED' && session?.user) {
-        setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
-      }
-      if (event === 'TOKEN_REFRESHED' && session?.user) {
-        setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
-      }
-    })
+    // 2. Listen to Supabase auth state changes if enabled
+    let subscription: any = null
+    if (isSupabaseEnabled) {
+      const { data } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          setIsAuthed(true)
+          setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
+          loginRevenueCat(session.user.id)
+          identify(
+            session.user.id,
+            session.user.email ? { email: session.user.email } : undefined
+          )
+        }
+        if (event === 'SIGNED_OUT') {
+          setIsAuthed(false)
+          setOnboardingCompleted(null)
+          logoutRevenueCat()
+          resetIdentity()
+        }
+        if (event === 'USER_UPDATED' && session?.user) {
+          setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
+        }
+        if (event === 'TOKEN_REFRESHED' && session?.user) {
+          setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
+        }
+      })
+      subscription = data?.subscription
+    }
 
-    return () => subscription.unsubscribe()
+    return () => {
+      if (subscription) subscription.unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
-    if (!__DEV__) return
-    const sub = DeviceEventEmitter.addListener('__dev_skip_auth__', () => {
+    const handleLocalSignIn = async () => {
+      console.log('[Auth] Local guest login triggered.')
+      await AsyncStorage.setItem('novaglow_local_session', 'true')
       setIsAuthed(true)
       setOnboardingCompleted(true)
-    })
-    return () => sub.remove()
+    }
+
+    const handleLocalSignOut = async () => {
+      console.log('[Auth] Local guest sign out triggered.')
+      await AsyncStorage.removeItem('novaglow_local_session')
+      setIsAuthed(false)
+      setOnboardingCompleted(null)
+    }
+
+    const sub1 = DeviceEventEmitter.addListener('__local_sign_in__', handleLocalSignIn)
+    const sub2 = DeviceEventEmitter.addListener('__dev_skip_auth__', handleLocalSignIn)
+    const sub3 = DeviceEventEmitter.addListener('__local_sign_out__', handleLocalSignOut)
+    
+    return () => {
+      sub1.remove()
+      sub2.remove()
+      sub3.remove()
+    }
   }, [])
 
   // Show blank dark screen while session + i18n checks complete.
@@ -266,7 +333,8 @@ function RootLayout() {
           <QueryClientProvider client={queryClient}>
           <SubscriptionProvider>
             <ToastProvider>
-            <LumiBootstrap>
+            <MediaProvider>
+            <NovaGlowBootstrap>
             <SafeAreaProvider>
               <GestureHandlerRootView style={{ flex: 1, backgroundColor: BG }}>
                 <BottomSheetModalProvider>
@@ -275,23 +343,13 @@ function RootLayout() {
                     translucent={Platform.OS === 'android'}
                     backgroundColor={Platform.OS === 'android' ? BG : undefined}
                   />
-                  <ThemeProvider value={customDarkTheme}>
+                  <ThemeProvider value={activeTheme}>
                     <View style={{ flex: 1, backgroundColor: BG }}>
                       <Stack ref={navigationRef} screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: BG } }}>
 
-                        {/* ── Unauthenticated screens ──────────────────────────────────
-                        Accessible only when signed out. When isAuthed flips to true,
-                        Stack.Protected removes these and Expo Router auto-redirects to
-                        the first accessible authenticated screen. */}
                         <Stack.Protected guard={!isAuthed}>
                           <Stack.Screen name="index" />
                           <Stack.Screen name="(auth)" />
-                        </Stack.Protected>
-
-                        {/* ── Onboarding screens ───────────────────────────────────────
-                        Shown when signed in but onboarding not yet completed. */}
-                        <Stack.Protected guard={!!isAuthed && onboardingCompleted === false}>
-                          <Stack.Screen name="(onboarding)" />
                         </Stack.Protected>
 
                         {/* ── Authenticated screens ────────────────────────────────────
@@ -318,7 +376,8 @@ function RootLayout() {
                 </BottomSheetModalProvider>
               </GestureHandlerRootView>
             </SafeAreaProvider>
-            </LumiBootstrap>
+            </NovaGlowBootstrap>
+            </MediaProvider>
             </ToastProvider>
           </SubscriptionProvider>
           </QueryClientProvider>

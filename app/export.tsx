@@ -3,17 +3,20 @@ import {
     View,
     StyleSheet,
     Pressable,
-    Image,
     ScrollView,
     Dimensions,
     ActivityIndicator,
     Alert
 } from 'react-native'
+import { Image } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
+import { useMedia } from '@/contexts/MediaContext'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { LinearGradient } from 'expo-linear-gradient'
+import { Share } from 'react-native'
+import * as MediaLibrary from 'expo-media-library'
 
 import { Text } from '@/components/ui/Text'
 import { Card } from '@/components/ui/Card'
@@ -48,17 +51,18 @@ const RENDERING_STEPS = [
 export default function ExportScreen() {
     const insets = useSafeAreaInsets()
     
-    // params from editor
+    // Read media from global context (NOT from router params)
+    const { media, setMedia } = useMedia()
+
+    // params from editor (non-media metadata)
     const params = useLocalSearchParams<{
-        mediaType: 'image' | 'video'
-        mediaUrl: string
         editsSummary: string
         selectedBackdrop?: string
         isBgRemoved?: string
     }>()
 
-    const mediaType = params.mediaType || 'image'
-    const mediaUrl = params.mediaUrl || ''
+    const mediaType = media?.type || 'image'
+    const mediaUrl = media?.uri || ''
     const editsSummary = params.editsSummary || 'Custom AI enhancements applied'
     const isBgRemoved = params.isBgRemoved === 'true'
 
@@ -108,13 +112,152 @@ export default function ExportScreen() {
     // Save project metadata to AsyncStorage history
     const saveProjectToHistory = async () => {
         try {
-            const stored = await AsyncStorage.getItem('lumi_projects')
+            let finalUrl = mediaUrl
+            if (mediaType === 'image' && mediaUrl) {
+                try {
+                    const ImageManipulator = require('expo-image-manipulator')
+                    
+                    // Determine image size dynamically to avoid distortion
+                    const getSizePromise = (uri: string): Promise<{ width: number; height: number }> => {
+                        return new Promise((resolve) => {
+                            Image.getSize(
+                                uri,
+                                (width, height) => resolve({ width, height }),
+                                () => resolve({ width: 1080, height: 1920 })
+                            )
+                        })
+                    }
+                    
+                    const dims = await getSizePromise(mediaUrl)
+                    const { width: W, height: H } = dims
+                    const actions = []
+
+                    if (selectedAspect === '1:1') {
+                        // Crop height/width to match the smaller dimension
+                        const side = Math.min(W, H)
+                        const originY = Math.max(0, Math.floor((H - side) / 2))
+                        const originX = Math.max(0, Math.floor((W - side) / 2))
+                        actions.push({
+                            crop: {
+                                originX,
+                                originY,
+                                width: side,
+                                height: side
+                            }
+                        })
+                    } else if (selectedAspect === '4:5') {
+                        // 4:5 aspect ratio (0.8). If current aspect is wider than 0.8, crop width. If taller, crop height.
+                        const targetAspect = 0.8
+                        const currentAspect = W / H
+                        if (currentAspect > targetAspect) {
+                            // Too wide, crop width
+                            const targetW = Math.floor(H * targetAspect)
+                            const originX = Math.max(0, Math.floor((W - targetW) / 2))
+                            actions.push({
+                                crop: {
+                                    originX,
+                                    originY: 0,
+                                    width: targetW,
+                                    height: H
+                                }
+                            })
+                        } else {
+                            // Too tall, crop height
+                            const targetH = Math.floor(W / targetAspect)
+                            const originY = Math.max(0, Math.floor((H - targetH) / 2))
+                            actions.push({
+                                crop: {
+                                    originX: 0,
+                                    originY,
+                                    width: W,
+                                    height: targetH
+                                }
+                            })
+                        }
+                    } else if (selectedAspect === '16:9') {
+                        // 16:9 aspect ratio (1.777). If current aspect is wider, crop width. If taller, crop height.
+                        const targetAspect = 16 / 9
+                        const currentAspect = W / H
+                        if (currentAspect > targetAspect) {
+                            const targetW = Math.floor(H * targetAspect)
+                            const originX = Math.max(0, Math.floor((W - targetW) / 2))
+                            actions.push({
+                                crop: {
+                                    originX,
+                                    originY: 0,
+                                    width: targetW,
+                                    height: H
+                                }
+                            })
+                        } else {
+                            const targetH = Math.floor(W / targetAspect)
+                            const originY = Math.max(0, Math.floor((H - targetH) / 2))
+                            actions.push({
+                                crop: {
+                                    originX: 0,
+                                    originY,
+                                    width: W,
+                                    height: targetH
+                                }
+                            })
+                        }
+                    } else {
+                        // Default 9:16 aspect ratio (0.5625)
+                        const targetAspect = 9 / 16
+                        const currentAspect = W / H
+                        if (Math.abs(currentAspect - targetAspect) > 0.01) {
+                            if (currentAspect > targetAspect) {
+                                const targetW = Math.floor(H * targetAspect)
+                                const originX = Math.max(0, Math.floor((W - targetW) / 2))
+                                actions.push({
+                                    crop: {
+                                        originX,
+                                        originY: 0,
+                                        width: targetW,
+                                        height: H
+                                    }
+                                })
+                            } else {
+                                const targetH = Math.floor(W / targetAspect)
+                                const originY = Math.max(0, Math.floor((H - targetH) / 2))
+                                actions.push({
+                                    crop: {
+                                        originX: 0,
+                                        originY,
+                                        width: W,
+                                        height: targetH
+                                    }
+                                })
+                            }
+                        }
+                    }
+
+                    const manipResult = await ImageManipulator.manipulateAsync(
+                        mediaUrl,
+                        actions,
+                        { compress: 0.95, format: ImageManipulator.SaveFormat.JPEG }
+                    )
+                    finalUrl = manipResult.uri
+                } catch (err) {
+                    console.warn('[Processing Engine] expo-image-manipulator error:', err)
+                }
+            }
+
+            // Sync with global MediaContext so Save / Share uses the edited & cropped file
+            if (media) {
+                setMedia({
+                    ...media,
+                    uri: finalUrl,
+                })
+            }
+
+            const stored = await AsyncStorage.getItem('novaglow_projects')
             let projects: ItemSummary[] = stored ? JSON.parse(stored) : [...defaultProjects]
             
             // Construct a new completed item
             const newItem: ItemSummary = {
                 id: `proj-${Date.now()}`,
-                name: `Lumi ${mediaType === 'image' ? 'Photo' : 'Video'} #${projects.length + 1}`,
+                name: `NovaGlow ${mediaType === 'image' ? 'Retouch' : 'Video'} #${projects.length + 1}`,
                 owner: 'Praveen Nayak',
                 status: 'active',
                 completion: 100,
@@ -122,18 +265,18 @@ export default function ExportScreen() {
                 activeUsers: mediaType === 'video' ? 60 : 60,
                 updatedAt: 'Just now',
                 summary: editsSummary,
-                thumbnail: mediaUrl,
+                thumbnail: finalUrl,
                 mediaType,
-                mediaUrl
+                mediaUrl: finalUrl
             }
 
             // Append to list and save
             const updated = [newItem, ...projects]
-            await AsyncStorage.setItem('lumi_projects', JSON.stringify(updated))
+            await AsyncStorage.setItem('novaglow_projects', JSON.stringify(updated))
             
             // Trigger local push notification alert
             await triggerLocalNotification(
-                'Lumi AI Creation Saved!',
+                'NovaGlow AI Creation Saved!',
                 `Your beautiful studio export is successfully saved in Creations.`
             )
             
@@ -145,8 +288,80 @@ export default function ExportScreen() {
         }
     }
 
-    const downloadToCameraRoll = () => {
-        Alert.alert('Saved!', 'Media exported to your camera roll successfully.')
+    const downloadToCameraRoll = async () => {
+        try {
+            let status = 'denied'
+            try {
+                const res = await MediaLibrary.requestPermissionsAsync(true)
+                status = res.status
+            } catch (err) {
+                console.warn('[Export] requestPermissionsAsync(true) failed, trying standard fallback:', err)
+                try {
+                    const res = await MediaLibrary.requestPermissionsAsync()
+                    status = res.status
+                } catch (err2) {
+                    console.warn('[Export] requestPermissionsAsync() failed, assuming granted to attempt saveToLibraryAsync:', err2)
+                    status = 'granted'
+                }
+            }
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Media library access is required to save files.')
+                return
+            }
+            
+            if (mediaUrl) {
+                const FileSystem = require('expo-file-system/legacy')
+                const info = await FileSystem.getInfoAsync(mediaUrl)
+                
+                if (!info.exists) {
+                    Alert.alert('Error', 'Source image file does not exist on disk.')
+                    return
+                }
+
+                try {
+                    // Save to system library inside a dedicated album
+                    const asset = await MediaLibrary.createAssetAsync(mediaUrl)
+                    const album = await MediaLibrary.getAlbumAsync('NovaGlow')
+                    if (album == null) {
+                        await MediaLibrary.createAlbumAsync('NovaGlow', asset, false)
+                    } else {
+                        await MediaLibrary.addAssetsToAlbumAsync([asset], album, false)
+                    }
+                } catch (albumErr) {
+                    console.log('[Export] Custom album save failed, falling back to standard save:', albumErr)
+                    await MediaLibrary.saveToLibraryAsync(mediaUrl)
+                }
+
+                Alert.alert(
+                    'Creative Saved!',
+                    `Verified File Exists: YES\n` +
+                    `Actual Local Path: ${mediaUrl}\n` +
+                    `File Size: ${(info.size / 1024 / 1024).toFixed(2)} MB\n\n` +
+                    `Successfully exported to System Gallery under album 'NovaGlow'!`,
+                    [{ text: 'Great!' }]
+                )
+            } else {
+                Alert.alert('Error', 'No media URL found to save.')
+            }
+        } catch (error: any) {
+            console.error('[Export] Save to gallery error:', error)
+            Alert.alert('Error Saving', error?.message || 'Failed to save to device gallery.')
+        }
+    }
+
+    const handleNativeShare = async () => {
+        try {
+            if (!mediaUrl) {
+                Alert.alert('Error', 'No media URL found to share.')
+                return
+            }
+            await Share.share({
+                url: mediaUrl,
+                message: `Check out my amazing creation from NovaGlow AI! #NovaGlowAI`,
+            })
+        } catch (error: any) {
+            console.error('[Export] Native share error:', error)
+        }
     }
 
     return (
@@ -166,7 +381,7 @@ export default function ExportScreen() {
             >
                 {/* Visual Media Preview */}
                 <View style={s.previewCardOuter}>
-                    <Image source={{ uri: mediaUrl }} style={s.mediaPreview as any} resizeMode="cover" />
+                    <Image source={{ uri: mediaUrl }} style={s.mediaPreview} resizeMode="cover" />
                     <LinearGradient
                         colors={['transparent', 'rgba(0,0,0,0.5)']}
                         style={StyleSheet.absoluteFillObject}
@@ -267,16 +482,24 @@ export default function ExportScreen() {
                                 onPress={downloadToCameraRoll}
                                 style={({ pressed }) => [s.actionItem, pressed && s.actionItemPressed]}
                             >
-                                <Ionicons name="download-outline" size={20} color="#fff" />
-                                <Text style={s.actionItemText}>Save to Device</Text>
+                                <Ionicons name="download-outline" size={18} color="#fff" />
+                                <Text style={s.actionItemText}>Save</Text>
+                            </Pressable>
+
+                            <Pressable
+                                onPress={handleNativeShare}
+                                style={({ pressed }) => [s.actionItem, { backgroundColor: SURFACE2, borderWidth: 1, borderColor: ACCENT }, pressed && s.actionItemPressed]}
+                            >
+                                <Ionicons name="share-social-outline" size={18} color={ACCENT} />
+                                <Text style={[s.actionItemText, { color: ACCENT }]}>Share</Text>
                             </Pressable>
 
                             <Pressable
                                 onPress={() => router.push('/(tabs)')}
                                 style={({ pressed }) => [s.actionItem, { backgroundColor: SURFACE }, pressed && s.actionItemPressed]}
                             >
-                                <Ionicons name="home-outline" size={20} color="#fff" />
-                                <Text style={s.actionItemText}>Home Studio</Text>
+                                <Ionicons name="home-outline" size={18} color="#fff" />
+                                <Text style={s.actionItemText}>Home</Text>
                             </Pressable>
                         </View>
 
