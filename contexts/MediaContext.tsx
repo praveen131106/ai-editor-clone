@@ -64,7 +64,6 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
     const addLog = useCallback((msg: string) => {
         const timestamp = new Date().toISOString().slice(11, 23)
         const entry = `[${timestamp}] ${msg}`
-        console.log('[MediaContext]', msg)
         setDebugLog(prev => [...prev.slice(-9), entry])
     }, [])
 

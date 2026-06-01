@@ -13,7 +13,6 @@ import { notificationItems as defaultNotifications, type NotificationItem } from
  * Requests local notification permission.
  */
 export async function requestNotificationPermissions(): Promise<boolean> {
-    console.log('[Notifications] Requested local push notification permissions.')
     return true
 }
 
@@ -22,7 +21,6 @@ export async function requestNotificationPermissions(): Promise<boolean> {
  * Saves it to AsyncStorage list and log feed.
  */
 export async function triggerLocalNotification(title: string, body: string): Promise<void> {
-    console.log(`[Notifications] Dispatched alert: "${title}" — ${body}`)
     
     try {
         const stored = await AsyncStorage.getItem('novaglow_notifications')
@@ -52,5 +50,4 @@ export async function triggerLocalNotification(title: string, body: string): Pro
  * Schedules automated creator reminder alerts (e.g. after 24 hours).
  */
 export async function scheduleDraftReminders(): Promise<void> {
-    console.log('[Notifications] Scheduled automated draft reminders (24h loop).')
 }

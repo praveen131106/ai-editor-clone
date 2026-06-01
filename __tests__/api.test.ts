@@ -15,12 +15,12 @@ describe('Lumi AI API Facade Middleware', () => {
     describe('removeBackgroundAPI', () => {
         it('resolves processed image URL with bg tag', async () => {
             const result = await removeBackgroundAPI('https://example.com/photo.jpg')
-            expect(result).toBe('https://example.com/photo.jpg?bg=removed')
+            expect(result.uri).toBe('https://example.com/photo.jpg?bg=removed')
         })
         
         it('appends correct URL search param if query already exists', async () => {
             const result = await removeBackgroundAPI('https://example.com/photo.jpg?size=large')
-            expect(result).toBe('https://example.com/photo.jpg?size=large&bg=removed')
+            expect(result.uri).toBe('https://example.com/photo.jpg?size=large&bg=removed')
         })
     })
 

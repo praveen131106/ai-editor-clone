@@ -1,10 +1,49 @@
+# Dependencies
 node_modules/
+
+# Expo
 .expo/
+.expo-shared/
+
+# Build outputs
 dist/
+build/
 web-build/
+
+# Environment variables
+.env
 .env.local
 .env.*.local
-*.orig.*
+!.env.example
+
+# Coverage
+coverage/
+*.lcov
+
+# Temporary files
+tmp/
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+.claude-logs/
+
+# Native build files
 ios/
 android/
 *.jks
@@ -13,8 +52,6 @@ android/
 *.key
 *.mobileprovision
 *.orig.*
-web-build/
-.DS_Store
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+
+# Expo specific
+.expo-shared/

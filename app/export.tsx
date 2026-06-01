@@ -328,7 +328,6 @@ export default function ExportScreen() {
                         await MediaLibrary.addAssetsToAlbumAsync([asset], album, false)
                     }
                 } catch (albumErr) {
-                    console.log('[Export] Custom album save failed, falling back to standard save:', albumErr)
                     await MediaLibrary.saveToLibraryAsync(mediaUrl)
                 }
 

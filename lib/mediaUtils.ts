@@ -23,7 +23,6 @@ async function ensureMediaDir(): Promise<void> {
     const dirInfo = await FileSystem.getInfoAsync(MEDIA_DIR)
     if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(MEDIA_DIR, { intermediates: true })
-        console.log('[MediaUtils] Created media directory:', MEDIA_DIR)
     }
 }
 
@@ -41,9 +40,6 @@ export async function copyToAppStorage(sourceUri: string, isVideo = false): Prom
     const filename = `novaglow_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`
     const destUri = `${MEDIA_DIR}${filename}`
  
-    console.log('[MediaUtils] Copying file:')
-    console.log('[MediaUtils]   FROM:', sourceUri)
-    console.log('[MediaUtils]   TO:', destUri)
  
     try {
         await FileSystem.copyAsync({
@@ -53,7 +49,6 @@ export async function copyToAppStorage(sourceUri: string, isVideo = false): Prom
  
         // Verify the copy worked
         const info = await FileSystem.getInfoAsync(destUri)
-        console.log('[MediaUtils] Copy result:', JSON.stringify(info))
  
         if (!info.exists) {
             throw new Error('File copy succeeded but file does not exist at destination')
@@ -79,7 +74,6 @@ export async function validateFileUri(uri: string): Promise<{
 }> {
     try {
         const info = await FileSystem.getInfoAsync(uri)
-        console.log('[MediaUtils] Validate:', uri.slice(-50), '→', JSON.stringify(info))
         return {
             exists: info.exists,
             size: (info as any).size || 0,
@@ -104,7 +98,6 @@ export async function cleanupOldMedia(): Promise<void> {
             for (const file of toDelete) {
                 await FileSystem.deleteAsync(`${MEDIA_DIR}${file}`, { idempotent: true })
             }
-            console.log('[MediaUtils] Cleaned up', toDelete.length, 'old files')
         }
     } catch (error) {
         console.warn('[MediaUtils] Cleanup error:', error)
@@ -123,7 +116,6 @@ export async function clearAllMediaCache(): Promise<number> {
             await FileSystem.deleteAsync(`${MEDIA_DIR}${file}`, { idempotent: true })
             count++
         }
-        console.log('[MediaUtils] Wiped all media cache:', count, 'files removed')
         return count
     } catch (error) {
         console.warn('[MediaUtils] Wipe cache error:', error)

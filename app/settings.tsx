@@ -64,7 +64,6 @@ export default function SettingsScreen() {
                     text: 'Log out',
                     style: 'destructive',
                     onPress: async () => {
-                        console.log('[Settings] Log out session triggered.')
                         DeviceEventEmitter.emit('__local_sign_out__')
                         router.replace('/(auth)/login')
                     }

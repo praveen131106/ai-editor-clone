@@ -4,7 +4,6 @@ import * as Localization from 'expo-localization'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 import en from '../locales/en.json'
-// TODO: add more languages by importing their JSON and adding to `resources`
 // import es from '../locales/es.json'
 
 const LANG_KEY = 'app_language'

@@ -18,7 +18,6 @@ import * as ImagePicker from 'expo-image-picker'
 import { LinearGradient } from 'expo-linear-gradient'
 import { BlurView } from 'expo-blur'
 import { captureRef } from 'react-native-view-shot'
-import * as ImageManipulator from 'expo-image-manipulator'
 let Audio: any = null
 let Video: any = null
 let ResizeMode: any = { CONTAIN: 'contain' }
@@ -49,25 +48,42 @@ import {
 } from '@/lib/theme'
 import {
     AI_STYLE_FILTERS,
-    PRESET_BACKDROPS,
     AUDIO_TRACKS,
     STOCK_PORTRAITS,
     STOCK_VIDEOS,
-    AI_AVATAR_STYLES,
     AI_STORY_TEMPLATES,
     type AIStyleFilter
 } from '@/lib/mockData'
-import { removeBackgroundAPI, smartHealingAPI, aiGenerateBackdropAPI } from '@/lib/api'
 import { useMedia } from '@/contexts/MediaContext'
+import { useToast } from '@/contexts/ToastContext'
+import { generateAvatarAPI, removeBackgroundAPI } from '@/lib/api'
 import { copyToAppStorage, validateFileUri } from '@/lib/mediaUtils'
 
 const { width: SW, height: SH } = Dimensions.get('window')
 const VIEWPORT_H = SH * 0.46
 
 type ActiveTab = 'retouch' | 'background' | 'video' | 'filters' | 'audio' | 'eraser' | 'avatar' | 'story'
+type AvatarStyleId = 'professional' | 'anime' | 'cyberpunk' | 'fashion' | 'influencer'
+
+const BACKGROUND_SCENES = [
+    { id: 'beach', name: 'Beach', image: require('../assets/backgrounds/beach.jpg') },
+    { id: 'office', name: 'Office', image: require('../assets/backgrounds/office.jpg') },
+    { id: 'studio', name: 'Studio', image: require('../assets/backgrounds/studio.jpg') },
+    { id: 'sunset', name: 'Sunset', image: require('../assets/backgrounds/sunset.jpg') },
+    { id: 'luxury', name: 'Luxury Room', image: require('../assets/backgrounds/luxury.jpg') },
+]
+
+const AVATAR_STYLE_OPTIONS: { id: AvatarStyleId; name: string; icon: keyof typeof Ionicons.glyphMap; tint: string }[] = [
+    { id: 'professional', name: 'Professional', icon: 'briefcase-outline', tint: '#94a3b8' },
+    { id: 'anime', name: 'Anime', icon: 'sparkles-outline', tint: '#facc15' },
+    { id: 'cyberpunk', name: 'Cyberpunk', icon: 'flash-outline', tint: '#06b6d4' },
+    { id: 'fashion', name: 'Fashion', icon: 'diamond-outline', tint: '#d6d3d1' },
+    { id: 'influencer', name: 'Influencer', icon: 'heart-outline', tint: '#fb7185' },
+]
 
 export default function EditorScreen() {
     const insets = useSafeAreaInsets()
+    const { showToast } = useToast()
     
     // Read media from global context (NOT from router params)
     const { media, setMedia } = useMedia()
@@ -82,8 +98,6 @@ export default function EditorScreen() {
     // Sync from context when it changes
     useEffect(() => {
         if (media?.uri) {
-            console.log('[Editor] Media from context:', media.uri)
-            console.log('[Editor] Media type:', media.type, 'size:', media.fileSize, 'w:', media.width, 'h:', media.height)
             setMediaUrlState(media.uri)
         }
     }, [media?.uri])
@@ -113,20 +127,21 @@ export default function EditorScreen() {
     const [isObjectErased, setIsObjectErased] = useState(false)
 
     // B. AI Avatar Parameters
-    const [selectedAvatarStyle, setSelectedAvatarStyle] = useState('avatar-cyber')
-    const [selectedHairstyle, setSelectedHairstyle] = useState('Slicked Back')
+    const [selectedAvatarStyle, setSelectedAvatarStyle] = useState<AvatarStyleId>('professional')
+    const [avatarImageUrl, setAvatarImageUrl] = useState<string | null>(null)
     const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false)
     const [avatarProgress, setAvatarProgress] = useState(0)
-    const [avatarImageUrl, setAvatarImageUrl] = useState<string | null>(null)
+    const [avatarError, setAvatarError] = useState('')
 
     // C. AI Story Parameters
     const [selectedStoryLayout, setSelectedStoryLayout] = useState<'magazine' | 'retro' | 'neon' | 'influencer'>('magazine')
     const [storyTitleText, setStoryTitleText] = useState('NOVAGLOW CREATIVE')
     const [storyTextSize, setStoryTextSize] = useState(32)
     const [storyTextColor, setStoryTextColor] = useState('#ffffff')
+    const mvpBackdrops = BACKGROUND_SCENES
 
     const currentMediaUrl = useMemo(() => {
-        if (activeTab === 'avatar' && avatarImageUrl && avatarImageUrl !== 'generated') return avatarImageUrl
+        if (activeTab === 'avatar' && avatarImageUrl) return avatarImageUrl
         return mediaUrlState
     }, [activeTab, avatarImageUrl, mediaUrlState])
 
@@ -164,8 +179,7 @@ export default function EditorScreen() {
                             quality: 1,
                         })
                         if (!result.canceled && result.assets && result.assets.length > 0) {
-                            const pickedUri = result.assets[0].uri
-                            console.log('[Editor] Camera picked URI:', pickedUri)
+                            const pickedUri = result.assets[0]?.uri
                             
                             // Copy to app storage
                             const stableUri = await copyToAppStorage(pickedUri)
@@ -178,8 +192,8 @@ export default function EditorScreen() {
                                     originalUri: pickedUri,
                                     type: mediaType,
                                     fileSize: validation.size,
-                                    width: result.assets[0].width || 0,
-                                    height: result.assets[0].height || 0,
+                                    width: result.assets[0]?.width || 0,
+                                    height: result.assets[0]?.height || 0,
                                     initialTool: activeTab,
                                     filterId: initialFilterId,
                                     projectId: '',
@@ -205,8 +219,7 @@ export default function EditorScreen() {
                             quality: 1,
                         })
                         if (!result.canceled && result.assets && result.assets.length > 0) {
-                            const pickedUri = result.assets[0].uri
-                            console.log('[Editor] Gallery picked URI:', pickedUri)
+                            const pickedUri = result.assets[0]?.uri
                             
                             // Copy to app storage
                             const stableUri = await copyToAppStorage(pickedUri, mediaType === 'video')
@@ -219,8 +232,8 @@ export default function EditorScreen() {
                                     originalUri: pickedUri,
                                     type: mediaType,
                                     fileSize: validation.size,
-                                    width: result.assets[0].width || 0,
-                                    height: result.assets[0].height || 0,
+                                    width: result.assets[0]?.width || 0,
+                                    height: result.assets[0]?.height || 0,
                                     initialTool: activeTab,
                                     filterId: initialFilterId,
                                     projectId: '',
@@ -237,21 +250,24 @@ export default function EditorScreen() {
 
     // 2. Background Removal & Replacement
     const [isBgRemoved, setIsBgRemoved] = useState(false)
-    const [isRemovingBg, setIsRemovingBg] = useState(false)
     const [selectedBackdrop, setSelectedBackdrop] = useState<string>('none')
+    const [bgRemovedImageUrl, setBgRemovedImageUrl] = useState<string | null>(null)
+    const [isRemovingBg, setIsRemovingBg] = useState(false)
+    const [bgRemovalProgress, setBgRemovalProgress] = useState(0)
+    const [bgRemovalError, setBgRemovalError] = useState('')
     const [bgBlur, setBgBlur] = useState(0) // background blur intensity (0 to 100)
-
-    // AI Backdrop Generator State
-    const [aiBackdropPrompt, setAiBackdropPrompt] = useState('')
-    const [isGeneratingBackdrop, setIsGeneratingBackdrop] = useState(false)
-    const [aiBackdropProgress, setAiBackdropProgress] = useState(0)
-    const [backdropStageIndex, setBackdropStageIndex] = useState(0)
+    const foregroundMediaUrl = isBgRemoved && bgRemovedImageUrl ? bgRemovedImageUrl : currentMediaUrl
+    const selectedBackgroundScene = useMemo(
+        () => BACKGROUND_SCENES.find((scene) => scene.id === selectedBackdrop) || BACKGROUND_SCENES[0],
+        [selectedBackdrop]
+    )
 
     // 3. Video Trimming & FX
     const [trimStart, setTrimStart] = useState(0) // percentage
     const [trimEnd, setTrimEnd] = useState(100) // percentage
     const [selectedFx, setSelectedFx] = useState<string>('none') // none, glitch, grain, light_leak
     const [isVideoPlaying, setIsVideoPlaying] = useState(true)
+    const [videoOverlayText, setVideoOverlayText] = useState('NOVAGLOW VIDEO')
 
     // 4. Filters & Presets
     const [activeFilterId, setActiveFilterId] = useState<string>(initialFilterId)
@@ -372,150 +388,72 @@ export default function EditorScreen() {
         // e.g. Audio.Sound.createAsync(...)
     }
 
-    // Smart Healing Object Eraser Simulation
-    // Smart Healing Object Eraser Simulation
-    const handleSmartErase = async () => {
+    const handleSmartErase = () => {
         if (eraserPoints.length === 0) return
+        
+        // MVP: Apply blur effect visualization
+        // The eraser points are already collected from touch input
+        // Setting isObjectErased flag tells export to bake the viewport
+        // which includes the visual blur circles overlaid on the image
+        
         setIsErasingSimulated(true)
         setHealingProgress(0)
         
-        let progress = 0
-        const interval = setInterval(() => {
-            progress += 10
-            setHealingProgress(progress)
-            if (progress >= 100) {
-                clearInterval(interval)
-            }
+        const timer = setInterval(() => {
+            setHealingProgress((prev) => {
+                if (prev >= 100) {
+                    clearInterval(timer)
+                    setIsErasingSimulated(false)
+                    setHealedPoints((prev) => [...prev, ...eraserPoints])
+                    setIsObjectErased(true)
+                    setEraserPoints([])
+                    showToast('Object erased! Export to save.', 'success')
+                    return 100
+                }
+                return prev + 12
+            })
         }, 150)
-
-        try {
-            setHealedPoints((prev) => [...prev, ...eraserPoints])
-            await smartHealingAPI(mediaUrlState, eraserPoints)
-            setIsObjectErased(true)
-        } catch (err) {
-            console.error('[API] smartHealingAPI error:', err)
-        } finally {
-            setIsErasingSimulated(false)
-            setEraserPoints([])
-        }
     }
 
-    // Background Removal API Trigger
     const handleToggleBackgroundRemoval = async () => {
-        if (!isBgRemoved) {
-            setIsRemovingBg(true)
-            try {
-                await removeBackgroundAPI(mediaUrlState)
-                setIsBgRemoved(true)
-            } catch (err) {
-                console.error('[API] removeBackgroundAPI error:', err)
-            } finally {
-                setIsRemovingBg(false)
-            }
+        if (isBgRemoved) {
+            setIsBgRemoved(false)
+            return
+        }
+
+        if (bgRemovedImageUrl) {
+            setSelectedBackdrop(selectedBackdrop === 'none' ? 'beach' : selectedBackdrop)
+            setIsBgRemoved(true)
+            return
+        }
+
+        await handleRemoveBackground()
+    }
+
+    const handleSelectBackdrop = (backdropId: string) => {
+        setSelectedBackdrop(backdropId)
+        // MVP: Allow background selection without requiring actual bg removal
+        // User can still change backdrop even if bgRemovedImageUrl is not set
+        if (backdropId !== 'none') {
+            // Enable background mode with selected backdrop
+            setIsBgRemoved(true)
         } else {
             setIsBgRemoved(false)
         }
     }
 
-    const BACKDROP_STEPS = [
-        'Analyzing prompt context...',
-        'Dreaming scenery landscapes...',
-        'Synthesizing high-res pixels...',
-        'Blending light & shadows...'
-    ]
-
-    const handleGenerateBackdrop = async () => {
-        if (!aiBackdropPrompt.trim() || isGeneratingBackdrop) return
-        setIsGeneratingBackdrop(true)
-        setAiBackdropProgress(0)
-        setBackdropStageIndex(0)
-
-        let progress = 0
-        const interval = setInterval(() => {
-            progress += 10
-            setAiBackdropProgress(progress)
-            
-            const step = Math.min(
-                Math.floor((progress / 100) * BACKDROP_STEPS.length),
-                BACKDROP_STEPS.length - 1
-            )
-            setBackdropStageIndex(step)
-
-            if (progress >= 100) {
-                clearInterval(interval)
-            }
-        }, 150)
-
-        try {
-            const generatedUrl = await aiGenerateBackdropAPI(aiBackdropPrompt)
-            setSelectedBackdrop(generatedUrl)
-            setIsBgRemoved(true)
-        } catch (err) {
-            console.error('[API] aiGenerateBackdropAPI error:', err)
-        } finally {
-            setIsGeneratingBackdrop(false)
-            setAiBackdropPrompt('')
-        }
+    const handleRemoveBackground = async () => {
+        Alert.alert('Coming Soon', 'AI Background Removal requires backend configuration. Use the Backdrop tab to swap backgrounds with local scenes instead.')
     }
 
-    // AI Avatar Stylization — Real Image Transformation via expo-image-manipulator
-    const handleGenerateAvatar = async () => {
-        setIsGeneratingAvatar(true)
-        setAvatarProgress(0)
-        
-        let progress = 0
-        const interval = setInterval(() => {
-            progress += 5
-            setAvatarProgress(Math.min(progress, 90))
-        }, 100)
+    const handleSelectAvatarStyle = async (styleId: AvatarStyleId) => {
+        Alert.alert('Coming Soon', 'AI Avatar Generator requires backend configuration. This feature will be available in a future update.')
+    }
 
-        try {
-            // Build transformation actions based on selected style
-            const actions: ImageManipulator.Action[] = []
-            
-            if (selectedAvatarStyle === 'avatar-cyber') {
-                // Cyberpunk: Flip horizontally for a mirrored "digital twin" look
-                actions.push({ flip: ImageManipulator.FlipType.Horizontal })
-            } else if (selectedAvatarStyle === 'avatar-anime') {
-                // Anime: Flip + slight crop for a "chibi" framing
-                actions.push({ flip: ImageManipulator.FlipType.Horizontal })
-                actions.push({ resize: { width: 1080 } })
-            } else if (selectedAvatarStyle === 'avatar-corporate') {
-                // Corporate CEO: Rotate 0° (noop) + resize for crisp headshot
-                actions.push({ resize: { width: 1200 } })
-            } else if (selectedAvatarStyle === 'avatar-painting') {
-                // Oil Painting: Flip vertically for surreal mirror effect
-                actions.push({ flip: ImageManipulator.FlipType.Vertical })
-            }
-
-            // Always ensure at least one action
-            if (actions.length === 0) {
-                actions.push({ resize: { width: 1080 } })
-            }
-
-            const result = await ImageManipulator.manipulateAsync(
-                mediaUrlState,
-                actions,
-                { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
-            )
-
-            clearInterval(interval)
-            setAvatarProgress(100)
-
-            if (result?.uri) {
-                console.log('[Avatar] Generated real transformed image:', result.uri)
-                setAvatarImageUrl(result.uri)
-            } else {
-                console.warn('[Avatar] No URI returned from manipulator')
-                setAvatarImageUrl('generated')
-            }
-        } catch (err) {
-            console.error('[Avatar] Image manipulation error:', err)
-            clearInterval(interval)
-            // Fallback: still mark as generated so overlays show
-            setAvatarImageUrl('generated')
-        } finally {
-            setIsGeneratingAvatar(false)
+    const handleSelectStoryLayout = (layout: 'magazine' | 'retro' | 'neon' | 'influencer') => {
+        setSelectedStoryLayout(layout)
+        if (!storyTitleText.trim()) {
+            setStoryTitleText('NOVAGLOW CREATIVE')
         }
     }
 
@@ -523,15 +461,17 @@ export default function EditorScreen() {
     const navigateToExport = async () => {
         setIsSaving(true)
         try {
-            let finalUri = (activeTab === 'avatar' && avatarImageUrl && avatarImageUrl !== 'generated') ? avatarImageUrl : mediaUrlState
+            let finalUri = (activeTab === 'avatar' && avatarImageUrl) ? avatarImageUrl : mediaUrlState
+            if (activeTab === 'background' && isBgRemoved && selectedBackdrop === 'none' && bgRemovedImageUrl) {
+                finalUri = bgRemovedImageUrl
+            }
             
             // If the user has made ANY changes, let's capture the view ref directly to bake all edits!
             if (
                 smoothing > 0 || glow > 0 || lipColor || warmth !== 50 || 
                 brightness !== 50 || contrast !== 50 || saturation !== 50 || sharpness > 0 || 
-                isBgRemoved || isObjectErased || activeTab === 'story' || activeTab === 'avatar'
+                (isBgRemoved && selectedBackdrop !== 'none') || isObjectErased || eraserPoints.length > 0 || activeTab === 'story' || activeTab === 'avatar' || activeTab === 'video'
             ) {
-                console.log('[Editor] Baking viewport edits using react-native-view-shot...')
                 // Wait briefly for UI layout to settle
                 await new Promise((resolve) => setTimeout(resolve, 150))
                 
@@ -542,7 +482,6 @@ export default function EditorScreen() {
                 })
                 
                 if (captured) {
-                    console.log('[Editor] Successfully baked edits into stable path:', captured)
                     finalUri = captured
                 }
             }
@@ -563,6 +502,8 @@ export default function EditorScreen() {
                 editsSummary = `Generated AI Avatar in ${selectedAvatarStyle} style`
             } else if (activeTab === 'story') {
                 editsSummary = `Created AI Story with template ${selectedStoryLayout} layout`
+            } else if (activeTab === 'video') {
+                editsSummary = `Video Studio export with ${selectedFx} filter and text overlay`
             }
 
             router.push({
@@ -596,7 +537,7 @@ export default function EditorScreen() {
     const bottomNavItems = useMemo(() => {
         if (mediaType === 'video') {
             return [
-                { key: 'video', label: 'Trim & FX', icon: 'videocam' },
+                { key: 'video', label: 'Studio', icon: 'videocam' },
                 { key: 'audio', label: 'Music', icon: 'musical-notes' },
                 { key: 'filters', label: 'AI Presets', icon: 'color-palette' }
             ]
@@ -605,7 +546,6 @@ export default function EditorScreen() {
                 { key: 'retouch', label: 'Retouch', icon: 'sparkles' },
                 { key: 'background', label: 'Backdrop', icon: 'image' },
                 { key: 'eraser', label: 'Eraser', icon: 'color-wand' },
-                { key: 'avatar', label: 'AI Avatar', icon: 'person-circle' },
                 { key: 'story', label: 'AI Story', icon: 'images' },
                 { key: 'filters', label: 'AI Presets', icon: 'color-palette' }
             ]
@@ -642,11 +582,13 @@ export default function EditorScreen() {
                         if (activeTab !== 'eraser' || isErasingSimulated) return
                         const { locationX, locationY } = evt.nativeEvent
                         setEraserPoints([{ x: locationX, y: locationY, size: eraserBrushSize }])
+                        setIsObjectErased(true)
                     }}
                     onResponderMove={(evt) => {
                         if (activeTab !== 'eraser' || isErasingSimulated) return
                         const { locationX, locationY } = evt.nativeEvent
                         setEraserPoints((prev) => [...prev, { x: locationX, y: locationY, size: eraserBrushSize }])
+                        setIsObjectErased(true)
                     }}
                 >
                     <View 
@@ -694,12 +636,10 @@ export default function EditorScreen() {
                         ]}
                     >
                         <Image 
-                            source={{ uri: selectedBackdrop.startsWith('http') ? selectedBackdrop : PRESET_BACKDROPS.find(b => b.id === selectedBackdrop)?.image }} 
+                            source={selectedBackgroundScene.image} 
                             style={{ width: '100%', height: '100%' }} 
                             resizeMode="cover" 
                         />
-                        {/* Subtle darkening for better subject contrast */}
-                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.15)' }]} />
                     </View>
                 )}
 
@@ -730,7 +670,7 @@ export default function EditorScreen() {
                             }}>
                                 {mediaType === 'video' && Video ? (
                                     <Video
-                                        source={{ uri: currentMediaUrl }}
+                                        source={{ uri: foregroundMediaUrl }}
                                         style={{ width: '100%', height: '100%' }}
                                         resizeMode={ResizeMode.CONTAIN}
                                         shouldPlay={isVideoPlaying}
@@ -738,11 +678,33 @@ export default function EditorScreen() {
                                         isMuted
                                     />
                                 ) : (
-                                    <Image 
-                                        source={{ uri: currentMediaUrl }} 
-                                        style={{ width: '100%', height: '100%' }} 
-                                        resizeMode="cover"
-                                    />
+                                    <>
+                                        <Image 
+                                            source={{ uri: foregroundMediaUrl }} 
+                                            style={{ width: '100%', height: '100%' }} 
+                                            resizeMode={bgRemovedImageUrl ? 'contain' : 'cover'}
+                                        />
+                                        {smoothing > 0 && (
+                                            <Image 
+                                                source={{ uri: foregroundMediaUrl }} 
+                                                style={[StyleSheet.absoluteFillObject, { opacity: (smoothing / 100) * 0.55 }]} 
+                                                blurRadius={Math.max(1, Math.round((smoothing / 100) * 12))}
+                                                resizeMode={bgRemovedImageUrl ? 'contain' : 'cover'}
+                                            />
+                                        )}
+                                        {warmth !== 50 && (
+                                            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: warmth > 50 ? '#f59e0b' : '#3b82f6', opacity: Math.abs(warmth - 50) / 80 }]} />
+                                        )}
+                                        {saturation !== 50 && (
+                                            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: saturation > 50 ? '#ec4899' : '#1a1a1a', opacity: Math.abs(saturation - 50) / 80 }]} />
+                                        )}
+                                        {contrast !== 50 && (
+                                            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: contrast > 50 ? '#000' : '#888', opacity: Math.abs(contrast - 50) / 90 }]} />
+                                        )}
+                                        {brightness !== 50 && (
+                                            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: brightness > 50 ? '#fff' : '#000', opacity: Math.abs(brightness - 50) / 90 }]} />
+                                        )}
+                                    </>
                                 )}
                             </View>
                             {/* Subtle bottom gradient for depth */}
@@ -873,11 +835,16 @@ export default function EditorScreen() {
                                     style={StyleSheet.absoluteFillObject}
                                 />
                             )}
+                            {mediaType === 'video' && !!videoOverlayText.trim() && (
+                                <View style={s.videoTextOverlay}>
+                                    <Text style={s.videoTextOverlayText}>{videoOverlayText.trim()}</Text>
+                                </View>
+                            )}
 
-                            {/* AI Object Eraser Content-Aware Healed Patches */}
-                            {isObjectErased && healedPoints.map((pt: any, idx) => {
+                            {/* Object Eraser blurred patches */}
+                            {[...healedPoints, ...eraserPoints].map((pt: any, idx) => {
                                 const size = pt.size || eraserBrushSize
-                                const scaledBlur = Math.max(18, Math.round(size * 0.8))
+                                const scaledBlur = Math.max(12, Math.round(size * 0.7))
                                 return (
                                     <View
                                         key={idx}
@@ -892,8 +859,6 @@ export default function EditorScreen() {
                                             zIndex: 15
                                         }}
                                     >
-                                        {/* Solid fill base for complete coverage */}
-                                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(40, 40, 50, 0.55)' }]} />
                                         <Image
                                             source={{ uri: currentMediaUrl }}
                                             style={{
@@ -906,6 +871,7 @@ export default function EditorScreen() {
                                             resizeMode="contain"
                                             blurRadius={scaledBlur}
                                         />
+                                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
                                     </View>
                                 )
                             })}
@@ -914,25 +880,67 @@ export default function EditorScreen() {
                 </View>
 
                 {/* 4. Interactive Object Eraser Mask Overlay */}
-                {activeTab === 'eraser' && eraserPoints.map((pt: any, idx) => {
-                    const size = pt.size || eraserBrushSize
-                    return (
-                        <View
-                            key={idx}
-                            style={{
-                                position: 'absolute',
-                                left: pt.x - size / 2,
-                                top: pt.y - size / 2,
-                                width: size,
-                                height: size,
-                                borderRadius: size / 2,
-                                backgroundColor: 'rgba(239, 68, 68, 0.45)', // Red brush trail
-                                pointerEvents: 'none',
-                                zIndex: 25
-                            }}
-                        />
-                    )
-                })}
+                {activeTab === 'eraser' && (
+                    <>
+                        {/* Current eraser points being drawn */}
+                        {eraserPoints.map((pt: any, idx) => {
+                            const size = pt.size || eraserBrushSize
+                            return (
+                                <View
+                                    key={idx}
+                                    style={{
+                                        position: 'absolute',
+                                        left: pt.x - size / 2,
+                                        top: pt.y - size / 2,
+                                        width: size,
+                                        height: size,
+                                        borderRadius: size / 2,
+                                        borderWidth: 1.5,
+                                        borderColor: ACCENT,
+                                        backgroundColor: `${ACCENT}11`,
+                                        pointerEvents: 'none',
+                                        zIndex: 25
+                                    }}
+                                />
+                            )
+                        })}
+                        
+                        {/* Healed points - show actual blur effect */}
+                        {healedPoints.map((pt: any, idx) => {
+                            const size = pt.size || eraserBrushSize
+                            return (
+                                <View
+                                    key={`healed-${idx}`}
+                                    style={{
+                                        position: 'absolute',
+                                        left: pt.x - size / 2,
+                                        top: pt.y - size / 2,
+                                        width: size,
+                                        height: size,
+                                        borderRadius: size / 2,
+                                        overflow: 'hidden',
+                                        pointerEvents: 'none',
+                                        zIndex: 24,
+                                        backgroundColor: 'rgba(0,0,0,0.3)'
+                                    }}
+                                >
+                                    <Image 
+                                        source={{ uri: currentMediaUrl }} 
+                                        style={{
+                                            position: 'absolute',
+                                            left: -pt.x + size / 2,
+                                            top: -pt.y + size / 2,
+                                            width: SW,
+                                            height: VIEWPORT_H,
+                                        }}
+                                        resizeMode="contain"
+                                        blurRadius={20}
+                                    />
+                                </View>
+                            )
+                        })}
+                    </>
+                )}
 
                 {/* 5. Object Eraser Smart Healing Progress Overlay */}
                 {activeTab === 'eraser' && isErasingSimulated && (
@@ -940,56 +948,6 @@ export default function EditorScreen() {
                         <ActivityIndicator size="large" color={ACCENT} />
                         <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800', marginTop: 12 }}>AI Smart Healing...</Text>
                         <Text style={{ color: ACCENT, fontSize: 12, fontWeight: '700', marginTop: 4 }}>{healingProgress}%</Text>
-                    </View>
-                )}
-
-                {/* 6. AI Avatar Face Scanner Mesh Overlay */}
-                {activeTab === 'avatar' && isGeneratingAvatar && (
-                    <View style={[StyleSheet.absoluteFillObject, { zIndex: 30, overflow: 'hidden' }]}>
-                        <LinearGradient
-                            colors={['rgba(217,70,239,0.3)', 'transparent']}
-                            style={{
-                                position: 'absolute',
-                                left: 0,
-                                right: 0,
-                                top: `${avatarProgress}%`,
-                                height: 80,
-                                borderBottomWidth: 2,
-                                borderBottomColor: ACCENT,
-                            }}
-                        />
-                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }]}>
-                            <ActivityIndicator size="large" color={ACCENT} />
-                            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', marginTop: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                                {avatarProgress < 30 ? 'Scanning Facial Mesh...' : avatarProgress < 65 ? 'Stylizing Textures...' : 'Rendering 3D Portrait...'}
-                            </Text>
-                            <Text style={{ color: ACCENT, fontSize: 14, fontWeight: '800', marginTop: 4 }}>{avatarProgress}%</Text>
-                        </View>
-                    </View>
-                )}
-
-                {/* AI Backdrop Generator Progress Overlay */}
-                {activeTab === 'background' && isGeneratingBackdrop && (
-                    <View style={[StyleSheet.absoluteFillObject, { zIndex: 30, overflow: 'hidden' }]}>
-                        <LinearGradient
-                            colors={['rgba(6,182,212,0.3)', 'transparent']}
-                            style={{
-                                position: 'absolute',
-                                left: 0,
-                                right: 0,
-                                top: `${aiBackdropProgress}%`,
-                                height: 80,
-                                borderBottomWidth: 2,
-                                borderBottomColor: '#06b6d4',
-                            }}
-                        />
-                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' }]}>
-                            <ActivityIndicator size="large" color="#06b6d4" />
-                            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', marginTop: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                                {BACKDROP_STEPS[backdropStageIndex]}
-                            </Text>
-                            <Text style={{ color: '#06b6d4', fontSize: 14, fontWeight: '800', marginTop: 4 }}>{aiBackdropProgress}%</Text>
-                        </View>
                     </View>
                 )}
 
@@ -1075,28 +1033,28 @@ export default function EditorScreen() {
                 {/* 8. AI Avatar Stylization Overlay */}
                 {activeTab === 'avatar' && !!avatarImageUrl && (
                     <View style={[StyleSheet.absoluteFillObject, { zIndex: 20, pointerEvents: 'none' }]}>
-                        {/* Cyberpunk Style Overlay */}
-                        {selectedAvatarStyle === 'avatar-cyber' && (
+                        {selectedAvatarStyle === 'professional' && (
                             <View style={StyleSheet.absoluteFillObject}>
                                 <LinearGradient
-                                    colors={['rgba(217,70,239,0.25)', 'rgba(6,182,212,0.25)']}
+                                    colors={['rgba(15,23,42,0.08)', 'rgba(0,0,0,0.42)']}
                                     style={StyleSheet.absoluteFillObject}
                                 />
-                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 4, borderColor: 'rgba(6,182,212,0.6)', margin: 10 }]} />
-                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 1.5, borderColor: 'rgba(217,70,239,0.6)', margin: 14 }]} />
-                                <View style={{ position: 'absolute', top: 20, right: 20, padding: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 6, borderWidth: 1, borderColor: '#06b6d4' }}>
-                                    <Text style={{ color: '#06b6d4', fontSize: 8, fontFamily: 'monospace', fontWeight: '900' }}>SYS.SCAN // 2099</Text>
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 10, borderColor: '#111827' }]} />
+                                <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />
+                                <View style={{ position: 'absolute', bottom: 22, left: 24, right: 24, paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.45)' }}>
+                                    <Text style={{ color: '#e5e7eb', fontSize: 10, fontWeight: '900', letterSpacing: 2, textAlign: 'center' }}>PROFESSIONAL HEADSHOT</Text>
                                 </View>
                             </View>
                         )}
 
-                        {/* Anime Chibi Style Overlay */}
-                        {selectedAvatarStyle === 'avatar-anime' && (
+                        {selectedAvatarStyle === 'anime' && (
                             <View style={StyleSheet.absoluteFillObject}>
                                 <LinearGradient
-                                    colors={['rgba(255,255,255,0.3)', 'transparent']}
+                                    colors={['rgba(250,204,21,0.28)', 'rgba(56,189,248,0.20)', 'rgba(244,114,182,0.22)']}
                                     style={StyleSheet.absoluteFillObject}
                                 />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 5, borderColor: '#facc15', margin: 8 }]} />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 2, borderColor: '#111827', margin: 14 }]} />
                                 <View style={{
                                     position: 'absolute',
                                     top: VIEWPORT_H * 0.53,
@@ -1122,41 +1080,56 @@ export default function EditorScreen() {
                                     shadowOpacity: 0.6
                                 }} />
                                 <View style={{ position: 'absolute', top: 60, left: 60 }}>
-                                    <Ionicons name="sparkles" size={24} color="#fef08a" style={{ opacity: 0.8 }} />
+                                    <Ionicons name="sparkles" size={28} color="#fef08a" style={{ opacity: 0.95 }} />
                                 </View>
                                 <View style={{ position: 'absolute', bottom: 120, right: 60 }}>
-                                    <Ionicons name="sparkles" size={20} color="#fef08a" style={{ opacity: 0.8 }} />
+                                    <Ionicons name="sparkles" size={22} color="#38bdf8" style={{ opacity: 0.95 }} />
                                 </View>
                             </View>
                         )}
 
-                        {/* Corporate CEO Style Overlay */}
-                        {selectedAvatarStyle === 'avatar-corporate' && (
+                        {selectedAvatarStyle === 'cyberpunk' && (
                             <View style={StyleSheet.absoluteFillObject}>
                                 <LinearGradient
-                                    colors={['rgba(255,255,255,0.22)', 'rgba(0,0,0,0.35)']}
+                                    colors={['rgba(217,70,239,0.35)', 'rgba(6,182,212,0.30)', 'rgba(0,0,0,0.1)']}
                                     style={StyleSheet.absoluteFillObject}
                                 />
-                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 8, borderColor: '#0f172a' }]} />
-                                <View style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center' }}>
-                                    <View style={{ backgroundColor: 'rgba(15,23,42,0.8)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-                                        <Text style={{ color: '#cbd5e1', fontSize: 9, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' }}>STUDIO EXECUTIVE PORTRAIT</Text>
-                                    </View>
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 4, borderColor: 'rgba(6,182,212,0.8)', margin: 10 }]} />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 2, borderColor: 'rgba(217,70,239,0.75)', margin: 18 }]} />
+                                <View style={{ position: 'absolute', top: 20, right: 20, padding: 7, backgroundColor: 'rgba(0,0,0,0.68)', borderRadius: 6, borderWidth: 1, borderColor: '#06b6d4' }}>
+                                    <Text style={{ color: '#67e8f9', fontSize: 8, fontFamily: 'monospace', fontWeight: '900' }}>NEON.SCAN // LIVE</Text>
                                 </View>
                             </View>
                         )}
 
-                        {/* Oil Painting Style Overlay */}
-                        {selectedAvatarStyle === 'avatar-painting' && (
+                        {selectedAvatarStyle === 'fashion' && (
                             <View style={StyleSheet.absoluteFillObject}>
                                 <LinearGradient
-                                    colors={['rgba(217,119,6,0.15)', 'rgba(120,53,4,0.25)']}
+                                    colors={['rgba(214,211,209,0.22)', 'rgba(68,64,60,0.36)']}
                                     style={StyleSheet.absoluteFillObject}
                                 />
-                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 14, borderColor: '#1c1917' }]} />
-                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 1, borderColor: '#d97706', margin: 14 }]} />
-                                <View style={{ position: 'absolute', bottom: 30, alignSelf: 'center', backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#b45309', paddingHorizontal: 10, paddingVertical: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 }}>
-                                    <Text style={{ color: '#78350f', fontSize: 8, fontWeight: '800', letterSpacing: 1 }}>MUSEUM COLLECTION</Text>
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 16, borderColor: '#fafaf9' }]} />
+                                <View style={{ position: 'absolute', top: 24, left: 0, right: 0, alignItems: 'center' }}>
+                                    <Text style={{ color: '#fafaf9', fontSize: 34, fontWeight: '900', letterSpacing: 4, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 5 }}>FASHION</Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {selectedAvatarStyle === 'influencer' && (
+                            <View style={StyleSheet.absoluteFillObject}>
+                                <LinearGradient
+                                    colors={['rgba(251,113,133,0.34)', 'rgba(255,255,255,0.18)', 'rgba(236,72,153,0.18)']}
+                                    style={StyleSheet.absoluteFillObject}
+                                />
+                                <Image
+                                    source={{ uri: currentMediaUrl }}
+                                    style={[StyleSheet.absoluteFillObject, { opacity: 0.28 }]}
+                                    resizeMode="contain"
+                                    blurRadius={10}
+                                />
+                                <View style={[StyleSheet.absoluteFillObject, { borderWidth: 8, borderColor: 'rgba(251,113,133,0.75)', margin: 10 }]} />
+                                <View style={{ position: 'absolute', bottom: 24, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 }}>
+                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }}>INFLUENCER GLOW</Text>
                                 </View>
                             </View>
                         )}
@@ -1372,97 +1345,65 @@ export default function EditorScreen() {
                     <ScrollView contentContainerStyle={s.scrollControls}>
                         {/* Remove toggle */}
                         <View style={s.toggleRow}>
-                            <Text style={s.sliderTitle}>One-Tap Remove Background</Text>
+                            <Text style={s.sliderTitle}>Background Swap MVP</Text>
                             <Pressable
                                 onPress={handleToggleBackgroundRemoval}
                                 disabled={isRemovingBg}
-                                style={[s.toggleSwitch, isBgRemoved && s.toggleSwitchActive, isRemovingBg && { opacity: 0.7 }]}
+                                style={[s.toggleSwitch, isBgRemoved && s.toggleSwitchActive, isRemovingBg && { opacity: 0.6 }]}
                             >
-                                {isRemovingBg ? (
-                                    <ActivityIndicator size="small" color="#fff" style={{ alignSelf: 'center' }} />
-                                ) : (
-                                    <View style={[s.toggleHandle, isBgRemoved && s.toggleHandleActive]} />
-                                )}
+                                <View style={[s.toggleHandle, isBgRemoved && s.toggleHandleActive]} />
                             </Pressable>
                         </View>
+                        <Pressable
+                            onPress={handleRemoveBackground}
+                            disabled={isRemovingBg}
+                            style={({ pressed }) => [
+                                s.aiActionBtn,
+                                isRemovingBg && { opacity: 0.7 },
+                                pressed && { opacity: 0.85 }
+                            ]}
+                        >
+                            {isRemovingBg ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="cut-outline" size={16} color="#fff" />}
+                            <Text style={s.aiActionBtnText}>
+                                {bgRemovedImageUrl ? 'Re-run AI Background Removal' : 'Remove Background with AI'}
+                            </Text>
+                        </Pressable>
+                        {isRemovingBg && (
+                            <View style={s.progressWrap}>
+                                <View style={[s.progressFill, { width: `${bgRemovalProgress}%` }]} />
+                            </View>
+                        )}
+                        {!!bgRemovalError && (
+                            <Pressable onPress={handleRemoveBackground} style={s.retryBox}>
+                                <Ionicons name="warning-outline" size={14} color="#f87171" />
+                                <Text style={s.retryText} numberOfLines={2}>{bgRemovalError}</Text>
+                                <Text style={s.retryAction}>Retry</Text>
+                            </Pressable>
+                        )}
 
                         <View style={{ gap: 12, marginTop: 4 }}>
                             <Text style={s.subSectionTitle}>Select Replacement Backdrop</Text>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.backdropRow}>
                                 <Pressable
-                                    onPress={() => {
-                                        setSelectedBackdrop('none')
-                                        setIsBgRemoved(false)
-                                    }}
+                                    onPress={() => handleSelectBackdrop('none')}
                                     style={[s.backdropCard, selectedBackdrop === 'none' && s.backdropCardActive]}
                                 >
                                     <View style={[s.backdropThumb, { backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center' }]}>
                                         <Ionicons name="ban-outline" size={20} color={TEXT_SECONDARY} />
                                     </View>
-                                    <Text style={s.backdropName}>Original</Text>
+                                    <Text style={s.backdropName}>{bgRemovedImageUrl ? 'Transparent PNG' : 'Original'}</Text>
                                 </Pressable>
-                                {PRESET_BACKDROPS.map((bg) => (
+                                {mvpBackdrops.map((bg) => (
                                     <Pressable
                                         key={bg.id}
-                                        onPress={() => {
-                                            setSelectedBackdrop(bg.id)
-                                            setIsBgRemoved(true)
-                                        }}
+                                        onPress={() => handleSelectBackdrop(bg.id)}
                                         style={[s.backdropCard, selectedBackdrop === bg.id && s.backdropCardActive]}
                                     >
-                                        <Image source={{ uri: bg.thumbnail }} style={s.backdropThumb} resizeMode="cover" />
+                                        <Image source={bg.image} style={s.backdropThumb} resizeMode="cover" />
                                         <Text style={s.backdropName} numberOfLines={1}>{bg.name}</Text>
                                     </Pressable>
                                 ))}
                             </ScrollView>
-                        </View>
-
-                        {/* Prompt-to-Backdrop scene generator */}
-                        <View style={{ gap: 10, marginTop: 6, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 14 }}>
-                            <Text style={s.subSectionTitle}>AI Backdrop Scene Generator</Text>
-                            <Text style={{ fontSize: 11, color: TEXT_SECONDARY }}>
-                                Describe the backdrop you want to create and NovaGlow AI will generate it:
-                            </Text>
-                            <TextInput
-                                style={{
-                                    backgroundColor: SURFACE,
-                                    borderWidth: 1,
-                                    borderColor: BORDER,
-                                    borderRadius: 10,
-                                    paddingHorizontal: 14,
-                                    paddingVertical: 10,
-                                    color: '#fff',
-                                    fontSize: 13,
-                                    marginTop: 2
-                                }}
-                                placeholder="e.g., retro futuristic vaporwave neon beach at sunset..."
-                                placeholderTextColor={TEXT_TERTIARY}
-                                value={aiBackdropPrompt}
-                                onChangeText={setAiBackdropPrompt}
-                                maxLength={80}
-                                editable={!isGeneratingBackdrop}
-                            />
-                            <Pressable
-                                onPress={handleGenerateBackdrop}
-                                disabled={!aiBackdropPrompt.trim() || isGeneratingBackdrop}
-                                style={({ pressed }) => [
-                                    {
-                                        backgroundColor: aiBackdropPrompt.trim() ? ACCENT : SURFACE2,
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        paddingVertical: 12,
-                                        borderRadius: 10,
-                                        gap: 8,
-                                        opacity: (!aiBackdropPrompt.trim() || isGeneratingBackdrop) ? 0.5 : (pressed ? 0.85 : 1)
-                                    }
-                                ]}
-                            >
-                                <Ionicons name="color-wand" size={16} color="#fff" />
-                                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
-                                    {isGeneratingBackdrop ? 'Generating Backdrop...' : 'Generate Backdrop'}
-                                </Text>
-                            </Pressable>
                         </View>
                     </ScrollView>
                 )}
@@ -1470,7 +1411,23 @@ export default function EditorScreen() {
                 {/* 3. Video Trimming Controls */}
                 {activeTab === 'video' && (
                     <ScrollView contentContainerStyle={s.scrollControls}>
-                        <Text style={s.sliderTitle}>Video Trim Duration</Text>
+                        <View style={{
+                            backgroundColor: `${ACCENT}22`,
+                            borderWidth: 1.5,
+                            borderColor: ACCENT,
+                            borderRadius: 10,
+                            paddingVertical: 12,
+                            paddingHorizontal: 14,
+                            marginBottom: 12,
+                            alignItems: 'center',
+                            gap: 4
+                        }}>
+                            <Ionicons name="information-circle" size={18} color={ACCENT} />
+                            <Text style={{color: ACCENT, fontSize: 12, fontWeight: '700', textAlign: 'center'}}>VIDEO EDITING IS COMING SOON</Text>
+                            <Text style={{color: TEXT_TERTIARY, fontSize: 11, textAlign: 'center', marginTop: 2}}>Playback, trim, and effects will be available in the next update.</Text>
+                        </View>
+                        
+                        <Text style={s.sliderTitle}>Video Studio Trim (Preview)</Text>
                         {/* Custom Double-Thumb range bar simulation */}
                         <View style={s.trimTimelineWrap}>
                             <View style={s.trimHighlightMap} />
@@ -1484,10 +1441,10 @@ export default function EditorScreen() {
                             <View style={[s.trimHandle, { left: 0 }]} />
                             <View style={[s.trimHandle, { right: 0 }]} />
                         </View>
-                        <Text style={s.timelineInfoText}>Selected: 15 seconds loop (TikTok Optimized)</Text>
+                        <Text style={s.timelineInfoText}>MVP trim simulation: 15 second social loop</Text>
 
                         {/* Video filters & overlays */}
-                        <Text style={[s.subSectionTitle, { marginTop: 10 }]}>Glitch Overlay Layers</Text>
+                        <Text style={[s.subSectionTitle, { marginTop: 10 }]}>Visible Video Filters</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fxRow}>
                             {[
                                 { key: 'none', label: 'Original', icon: 'videocam-outline' },
@@ -1505,6 +1462,24 @@ export default function EditorScreen() {
                                 </Pressable>
                             ))}
                         </ScrollView>
+                        <Text style={s.subSectionTitle}>Text Overlay</Text>
+                        <TextInput
+                            style={{
+                                backgroundColor: SURFACE,
+                                borderWidth: 1,
+                                borderColor: BORDER,
+                                borderRadius: 10,
+                                paddingHorizontal: 14,
+                                paddingVertical: 10,
+                                color: '#fff',
+                                fontSize: 13,
+                            }}
+                            placeholder="Add video title..."
+                            placeholderTextColor={TEXT_TERTIARY}
+                            value={videoOverlayText}
+                            onChangeText={setVideoOverlayText}
+                            maxLength={28}
+                        />
                     </ScrollView>
                 )}
 
@@ -1647,62 +1622,40 @@ export default function EditorScreen() {
                 {/* 7. AI Avatar Controls */}
                 {activeTab === 'avatar' && (
                     <ScrollView contentContainerStyle={s.scrollControls} showsVerticalScrollIndicator={false}>
-                        <Text style={s.sliderTitle}>Select Style Archetype</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.backdropRow}>
-                            {AI_AVATAR_STYLES.map((style) => (
+                        <Text style={s.sliderTitle}>Select Avatar Style</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.avatarStyleRow}>
+                            {AVATAR_STYLE_OPTIONS.map((style) => (
                                 <Pressable
                                     key={style.id}
-                                    onPress={() => setSelectedAvatarStyle(style.id)}
-                                    style={[s.backdropCard, selectedAvatarStyle === style.id && s.backdropCardActive]}
+                                    onPress={() => handleSelectAvatarStyle(style.id)}
+                                    disabled={isGeneratingAvatar}
+                                    style={[s.avatarStyleCard, selectedAvatarStyle === style.id && s.avatarStyleCardActive]}
                                 >
-                                    <Image source={{ uri: style.thumbnail }} style={[s.backdropThumb, selectedAvatarStyle === style.id && { borderColor: ACCENT, borderWidth: 2 }]} resizeMode="cover" />
-                                    <Text style={[s.backdropName, selectedAvatarStyle === style.id && { color: ACCENT, fontWeight: '700' }]} numberOfLines={1}>
-                                        {style.name.split(' ')[0]}
-                                    </Text>
+                                    <View style={[s.avatarIconSwatch, { backgroundColor: `${style.tint}22`, borderColor: style.tint }]}>
+                                        <Ionicons name={style.icon as any} size={20} color={style.tint} />
+                                    </View>
+                                    <Text style={[s.backdropName, selectedAvatarStyle === style.id && { color: ACCENT, fontWeight: '800' }]} numberOfLines={1}>{style.name}</Text>
                                 </Pressable>
                             ))}
                         </ScrollView>
-
-                        <Text style={s.subSectionTitle}>Select Hairstyle</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fxRow}>
-                            {['Slicked Back', 'Neon Waves', 'Retro Curls', 'Cyber Fade'].map((hair) => (
-                                <Pressable
-                                    key={hair}
-                                    onPress={() => setSelectedHairstyle(hair)}
-                                    style={[s.fxCard, selectedHairstyle === hair && s.fxCardActive]}
-                                >
-                                    <Text style={[s.fxCardText, selectedHairstyle === hair && { color: '#fff' }]}>{hair}</Text>
-                                </Pressable>
-                            ))}
-                        </ScrollView>
-
-                        <Pressable
-                            onPress={handleGenerateAvatar}
-                            disabled={isGeneratingAvatar}
-                            style={({ pressed }) => [
-                                {
-                                    backgroundColor: ACCENT,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    paddingVertical: 14,
-                                    borderRadius: 12,
-                                    gap: 8,
-                                    marginTop: 10,
-                                    opacity: isGeneratingAvatar ? 0.6 : (pressed ? 0.85 : 1),
-                                    shadowColor: ACCENT,
-                                    shadowOffset: { width: 0, height: 4 },
-                                    shadowOpacity: 0.3,
-                                    shadowRadius: 8,
-                                    elevation: 6
-                                }
-                            ]}
-                        >
-                            <Ionicons name="flash" size={16} color="#fff" />
-                            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>
-                                {isGeneratingAvatar ? 'Stylizing Portrait...' : 'Generate AI Avatar'}
-                            </Text>
-                        </Pressable>
+                        {isGeneratingAvatar && (
+                            <View style={{ gap: 8 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <ActivityIndicator size="small" color={ACCENT} />
+                                    <Text style={s.timelineInfoText}>Gemini is generating a new avatar image...</Text>
+                                </View>
+                                <View style={s.progressWrap}>
+                                    <View style={[s.progressFill, { width: `${avatarProgress}%` }]} />
+                                </View>
+                            </View>
+                        )}
+                        {!!avatarError && (
+                            <Pressable onPress={() => handleSelectAvatarStyle(selectedAvatarStyle)} style={s.retryBox}>
+                                <Ionicons name="warning-outline" size={14} color="#f87171" />
+                                <Text style={s.retryText} numberOfLines={2}>{avatarError}</Text>
+                                <Text style={s.retryAction}>Retry</Text>
+                            </Pressable>
+                        )}
                     </ScrollView>
                 )}
 
@@ -1714,7 +1667,7 @@ export default function EditorScreen() {
                             {AI_STORY_TEMPLATES.map((tmpl) => (
                                 <Pressable
                                     key={tmpl.id}
-                                    onPress={() => setSelectedStoryLayout(tmpl.layout)}
+                                    onPress={() => handleSelectStoryLayout(tmpl.layout)}
                                     style={[s.fxCard, selectedStoryLayout === tmpl.layout && s.fxCardActive]}
                                 >
                                     <Ionicons 
@@ -1953,6 +1906,40 @@ const s = StyleSheet.create({
     sliderLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     sliderTitle: { fontSize: 13, color: '#fff', fontWeight: '700' },
     sliderVal: { fontSize: 12, color: ACCENT, fontWeight: '700' },
+    aiActionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: ACCENT,
+        borderRadius: 10,
+        paddingVertical: 12
+    },
+    aiActionBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+    progressWrap: {
+        height: 5,
+        borderRadius: 999,
+        backgroundColor: SURFACE2,
+        overflow: 'hidden'
+    },
+    progressFill: {
+        height: '100%',
+        borderRadius: 999,
+        backgroundColor: ACCENT
+    },
+    retryBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(248,113,113,0.35)',
+        backgroundColor: 'rgba(248,113,113,0.08)',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 9
+    },
+    retryText: { flex: 1, color: '#fecaca', fontSize: 11, fontWeight: '600' },
+    retryAction: { color: '#fff', fontSize: 11, fontWeight: '900' },
 
     // Colors Row tint selection
     colorRow: { gap: 10, paddingVertical: 4 },
@@ -1970,6 +1957,10 @@ const s = StyleSheet.create({
     backdropThumb: { width: 80, height: 80, borderRadius: 12, borderWidth: 1, borderColor: BORDER },
     backdropCardActive: { opacity: 0.9 },
     backdropName: { fontSize: 10, color: TEXT_SECONDARY, textAlign: 'center' },
+    avatarStyleRow: { gap: 10, paddingVertical: 4 },
+    avatarStyleCard: { width: 92, alignItems: 'center', gap: 6 },
+    avatarStyleCardActive: { opacity: 1, transform: [{ scale: 1.03 }] },
+    avatarIconSwatch: { width: 82, height: 58, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 
     // Video cropping timeline
     trimTimelineWrap: {
@@ -2000,6 +1991,20 @@ const s = StyleSheet.create({
         borderRadius: 4
     },
     timelineInfoText: { fontSize: 10.5, color: TEXT_TERTIARY, textAlign: 'center' },
+    videoTextOverlay: {
+        position: 'absolute',
+        left: 24,
+        right: 24,
+        bottom: 34,
+        backgroundColor: 'rgba(0,0,0,0.58)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.22)',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        alignItems: 'center'
+    },
+    videoTextOverlayText: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 1.2, textAlign: 'center' },
     fxRow: { gap: 10, paddingVertical: 4 },
     fxCard: {
         flexDirection: 'row',

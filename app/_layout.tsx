@@ -145,7 +145,6 @@ function NovaGlowBootstrap({ children }: { children: React.ReactNode }) {
       const url = event.url
       if (!url) return
       
-      console.log('[DeepLinking] Received URL:', url)
       
       if (url.includes('promo')) {
         showToast('Premium Filter Unlocked! 🚀', 'success')
@@ -290,14 +289,12 @@ function RootLayout() {
 
   useEffect(() => {
     const handleLocalSignIn = async () => {
-      console.log('[Auth] Local guest login triggered.')
       await AsyncStorage.setItem('novaglow_local_session', 'true')
       setIsAuthed(true)
       setOnboardingCompleted(true)
     }
 
     const handleLocalSignOut = async () => {
-      console.log('[Auth] Local guest sign out triggered.')
       await AsyncStorage.removeItem('novaglow_local_session')
       setIsAuthed(false)
       setOnboardingCompleted(null)

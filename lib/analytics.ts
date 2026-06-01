@@ -41,7 +41,6 @@ type EventName =
   // Profile
   | 'profile_viewed'
   | 'profile_updated'
-// TODO: add your app-specific events here
 
 /** Track an event. No-ops silently when PostHog is unconfigured. */
 export function track(event: EventName, properties?: TrackProperties) {

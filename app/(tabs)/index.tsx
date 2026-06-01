@@ -106,8 +106,6 @@ export default function HomeScreen() {
      */
     const processAndNavigate = async (asset: ImagePicker.ImagePickerAsset, mediaType: 'image' | 'video', tool: string) => {
         const uri = asset.uri
-        console.log('[Home] Raw picked URI:', uri)
-        console.log('[Home] Asset:', JSON.stringify({ width: asset.width, height: asset.height, fileSize: asset.fileSize, type: asset.type }))
 
         // Validate the asset
         if (!uri || uri.length === 0) {
@@ -120,11 +118,9 @@ export default function HomeScreen() {
         try {
             // Copy to stable app storage
             const stableUri = await copyToAppStorage(uri, mediaType === 'video')
-            console.log('[Home] Stable URI:', stableUri)
 
             // Validate the copied file
             const validation = await validateFileUri(stableUri)
-            console.log('[Home] Validation:', JSON.stringify(validation))
 
             if (!validation.exists) {
                 Alert.alert('Error', 'Failed to save the selected image. The file could not be copied.')
@@ -172,7 +168,7 @@ export default function HomeScreen() {
         })
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
-            await processAndNavigate(result.assets[0], selectedMediaType, pickerTargetTool)
+            await processAndNavigate(result.assets[0]!, selectedMediaType, pickerTargetTool)
         }
     }
 
@@ -193,7 +189,7 @@ export default function HomeScreen() {
         })
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
-            await processAndNavigate(result.assets[0], selectedMediaType, pickerTargetTool)
+            await processAndNavigate(result.assets[0]!, selectedMediaType, pickerTargetTool)
         }
     }
 
@@ -235,12 +231,6 @@ export default function HomeScreen() {
                     <Text style={s.subGreeting}>{greeting}, Creator</Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                    <Pressable
-                        onPress={() => router.push('/image-debug')}
-                        style={({ pressed }) => [s.debugBadge, pressed && { opacity: 0.8 }]}
-                    >
-                        <Ionicons name="bug-outline" size={14} color="#fff" />
-                    </Pressable>
                     <Pressable
                         onPress={() => router.push('/upgrade')}
                         style={({ pressed }) => [s.proBadge, pressed && { opacity: 0.8 }]}
@@ -308,29 +298,30 @@ export default function HomeScreen() {
                     <Text style={s.gridDesc}>Retouch & Hair</Text>
                 </Pressable>
 
-                <View
-                    style={[s.gridItem, { opacity: 0.4 }]}
+                <Pressable
+                    onPress={() => openToolPicker('video', 'video')}
+                    style={({ pressed }) => [s.gridItem, pressed && s.gridItemPressed]}
                 >
                     <LinearGradient colors={['rgba(6,182,212,0.15)', 'transparent']} style={s.gridGrad} />
                     <View style={[s.iconBg, { backgroundColor: 'rgba(6,182,212,0.1)' }]}>
                         <Ionicons name="videocam-outline" size={24} color="#06b6d4" />
                     </View>
-                    <Text style={s.gridTitle}>AI Video</Text>
-                    <Text style={[s.gridDesc, { color: '#fbbf24' }]}>Coming Soon</Text>
-                </View>
+                    <Text style={s.gridTitle}>Video Studio</Text>
+                    <Text style={s.gridDesc}>Trim, FX & Text</Text>
+                </Pressable>
             </View>
 
             <View style={s.gridRow}>
                 <Pressable
-                    onPress={() => openToolPicker('image', 'bg_swap')}
-                    style={({ pressed }) => [s.gridItem, pressed && s.gridItemPressed]}
+                    onPress={() => Alert.alert('Coming Soon', 'AI Background Removal requires backend configuration. Use local Background Swap instead.')}
+                    style={({ pressed }) => [s.gridItem, pressed && s.gridItemPressed, { opacity: 0.6 }]}
                 >
                     <LinearGradient colors={['rgba(59,130,246,0.15)', 'transparent']} style={s.gridGrad} />
                     <View style={[s.iconBg, { backgroundColor: 'rgba(59,130,246,0.1)' }]}>
                         <Ionicons name="color-wand-outline" size={24} color="#3b82f6" />
                     </View>
                     <Text style={s.gridTitle}>BG Swap</Text>
-                    <Text style={s.gridDesc}>Portrait Cutout</Text>
+                    <Text style={s.gridDesc}>Coming Soon</Text>
                 </Pressable>
 
                 <Pressable
@@ -348,15 +339,15 @@ export default function HomeScreen() {
 
             <View style={s.gridRow}>
                 <Pressable
-                    onPress={() => openToolPicker('image', 'avatar')}
-                    style={({ pressed }) => [s.gridItem, pressed && s.gridItemPressed]}
+                    onPress={() => Alert.alert('Coming Soon', 'AI Avatar Generator requires backend configuration.')}
+                    style={({ pressed }) => [s.gridItem, pressed && s.gridItemPressed, { opacity: 0.6 }]}
                 >
                     <LinearGradient colors={['rgba(168,85,247,0.15)', 'transparent']} style={s.gridGrad} />
                     <View style={[s.iconBg, { backgroundColor: 'rgba(168,85,247,0.1)' }]}>
                         <Ionicons name="person-circle-outline" size={24} color="#a855f7" />
                     </View>
                     <Text style={s.gridTitle}>AI Avatar</Text>
-                    <Text style={s.gridDesc}>Hairstyles & Styles</Text>
+                    <Text style={s.gridDesc}>Coming Soon</Text>
                 </Pressable>
 
                 <Pressable
